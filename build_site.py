@@ -61,36 +61,47 @@ def load_image() -> list[dict]:
     return list(runs.values())
 
 
-def _latest_run(reports: Path):
-    for d in sorted(reports.glob("2026-*"), reverse=True):
-        models = [j for j in d.glob("*.json") if not re.search(r"dashboard|index", j.name, re.I)]
-        if len(models) >= 5:
-            return d, sorted(models)
-    return None, []
-
-
-def load_llm_reports() -> dict | None:
-    """Kuratierte Kennzahlen des jüngsten Laufs. Liest NUR reports/<run>/*.json —
-    niemals .env oder config/. Sicherheits-Playbook und die Roh-Transkripte
-    (playbooks[*].results) werden NICHT übernommen; nur Pass-Raten je Playbook.
-    Modellnamen werden vom /hf_models/-Präfix befreit."""
-    run, files = _latest_run(REPORTS_DIR)
-    if not run:
-        return None
-    rows = []
+def _load_run_rows(files: list[Path]) -> tuple[list[dict], int]:
+    """Kuratierte Kennzahlen-Zeilen eines Laufs + Anzahl SaaS-servierter Modelle.
+    Liest NUR reports/<run>/*.json — niemals .env/config. Nur Pass-Raten je
+    Playbook, keine Roh-Transkripte; Sicherheits-Playbook (04) fällt raus."""
+    rows, saas = [], 0
     for j in files:
         try:
             d = json.loads(j.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
         meta, summ, pbs = d.get("meta", {}), d.get("summary", {}), d.get("playbooks", {})
+        if meta.get("source") == "saas_proxy":
+            saas += 1
         name = str(meta.get("model") or j.stem).rsplit("/", 1)[-1]
         pr = {k: v.get("pass_rate") for k, v in pbs.items()
               if k not in EXCLUDE_PLAYBOOKS and isinstance(v, dict)}
         rows.append({"model": name, "overall": summ.get("overall"),
                      "pass_rate": summ.get("pass_rate"), "ko": summ.get("knockouts", 0), "pb": pr})
     rows.sort(key=lambda r: float(r["pass_rate"] or 0), reverse=True)
-    return {"run": run.name, "rows": rows}
+    return rows, saas
+
+
+def load_llm_runs() -> dict:
+    """Jeweils jüngster Lauf je Art: 'local' (DGX-Spark-serviert) und 'saas'
+    (über den LiteLLM-Proxy). Klassifiziert per meta.source=='saas_proxy' —
+    ein Lauf gilt als SaaS, wenn die Mehrheit seiner Modelle so markiert ist."""
+    local: dict | None = None
+    saas: dict | None = None
+    for d in sorted(REPORTS_DIR.glob("2026-*"), reverse=True):
+        models = [j for j in d.glob("*.json") if not re.search(r"dashboard|index", j.name, re.I)]
+        if len(models) < 5:
+            continue
+        rows, nsaas = _load_run_rows(sorted(models))
+        kind = "saas" if nsaas * 2 >= len(models) else "local"
+        if kind == "saas" and saas is None:
+            saas = {"run": d.name, "rows": rows}
+        elif kind == "local" and local is None:
+            local = {"run": d.name, "rows": rows}
+        if local and saas:
+            break
+    return {"local": local, "saas": saas}
 
 
 # ── Render-Helfer ────────────────────────────────────────────────────────────
@@ -147,11 +158,11 @@ def image_section(imgs: list[dict]) -> tuple[str, str]:
     return sec, c
 
 
-def llm_section() -> tuple[str, str]:
-    data = load_llm_reports()
+def llm_chapter(data: dict | None, cid: str, title: str, lead: str,
+                card_title: str) -> tuple[str, str]:
+    """Ein LLM-Kapitel (lokal oder SaaS) + zugehörige Übersichtskarte."""
     if not data or not data["rows"]:
-        return ('<h2 id="llm">LLM (vLLM-Testplan)</h2>\n<p class="empty">Keine Berichte gefunden.</p>',
-                card("LLM (vLLM)", "—", "keine Berichte"))
+        return "", card(card_title, "—", "keine Berichte")
     cols = list(PLAYBOOK_LABELS)
     header = ["Modell", "Gesamt", "K.O."] + [PLAYBOOK_LABELS[c] for c in cols]
     rows = []
@@ -164,12 +175,12 @@ def llm_section() -> tuple[str, str]:
             cells.append("—" if v is None else f"{round(float(v) * 100)}%")
         rows.append(cells)
     best = data["rows"][0]
-    sec = (f'<h2 id="llm">LLM (vLLM-Testplan)</h2>\n'
-           f'<p>Lauf <code>{esc(data["run"])}</code> · {len(rows)} Modelle · Pass-Rate je Playbook. '
-           f'<strong>Sicherheit (04) ist bewusst nicht publiziert</strong> — Jailbreak-/PII-Rohausgaben '
-           f'bleiben lokal. Nur Kennzahlen, keine Transkripte.</p>\n'
+    sec = (f'<h2 id="{cid}">{esc(title)}</h2>\n'
+           f'<p>{lead} Lauf <code>{esc(data["run"])}</code> · {len(rows)} Modelle · '
+           f'Pass-Rate je Playbook. <strong>Sicherheit (04) ist bewusst nicht publiziert</strong> — '
+           f'Jailbreak-/PII-Rohausgaben bleiben lokal. Nur Kennzahlen, keine Transkripte.</p>\n'
            f'<div style="overflow-x:auto">{table(header, rows)}</div>')
-    c = card("LLM (vLLM)", str(len(rows)), f'Modelle · Top {esc(best["pass_rate"])}%', "#llm")
+    c = card(card_title, str(len(rows)), f'Modelle · Top {esc(best["pass_rate"])}%', f"#{cid}")
     return sec, c
 
 
@@ -205,47 +216,79 @@ def write_summary(run_id, llm_models, guard_models, image_models, tts_models=())
 def build() -> str:
     guards = load_guards()
     imgs = load_image()
+    runs = load_llm_runs()
     g_sec, g_card = guards_section(guards)
     i_sec, i_card = image_section(imgs)
-    llm_sec, llm_card = llm_section()
+    local_sec, local_card = llm_chapter(
+        runs["local"], "llm-local", "LLM — Lokale Modelle (DGX Spark)",
+        "Auf dem GB10 selbst serviert (vLLM), Judge-bewertet.", "LLM lokal")
+    saas_sec, saas_card = llm_chapter(
+        runs["saas"], "llm-saas", "LLM — SaaS-Referenzkohorte",
+        "Frontier-Modelle über eine OpenAI-kompatible API als Referenzrahmen, "
+        "gleicher Testsatz, Judge <code>claude-sonnet-5</code>.", "LLM SaaS")
 
     tts_card = card("TTS", "→", "Vergleich anhören", TTS_URL)
-    cards = "\n".join([llm_card, g_card, tts_card, i_card])
+    cards = "\n".join([local_card, saas_card, g_card, tts_card, i_card])
 
     tts_sec = (f'<h2 id="tts">TTS</h2>\n<p>Deutscher TTS-Vergleich mit '
                f'anhörbaren Beispielen: <a href="{TTS_URL}">{TTS_URL}</a></p>')
 
+    # SouthByte Web-CI (references/web-ci.md, colors.md): Dark-Theme, Matrix-Grid,
+    # Wortmarke SOUTH.BYTE (Punkt in Grün), Mono-Überschriften. Self-contained für Pages.
     return f"""<!doctype html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>southbyte — Modell-Evaluationen (DGX Spark)</title>
+<title>SOUTH.BYTE — Modell-Evaluationen (DGX Spark)</title>
 <style>
- :root{{--fg:#1a1a1a;--muted:#666;--line:#e2e2e2;--accent:#06c;--bg:#fff}}
- body{{font-family:system-ui,sans-serif;margin:0;color:var(--fg);background:var(--bg);line-height:1.5}}
- .wrap{{max-width:960px;margin:0 auto;padding:2rem 1.25rem}}
- h1{{margin:.2rem 0}} .lede{{color:var(--muted);margin:0 0 1.5rem}}
+ :root{{--bg:#060C0A;--bg-raised:#0A1410;--bg-card:#0E1A14;--border:#162A1E;--border-hi:#1A5C38;
+   --green:#00E676;--green-dim:#00994A;--amber:#F59E0B;--text:#D4EDE0;--text-muted:#5E8A72;--text-dim:#2E5040;
+   --ko:#FF5A5A;--mono:'Courier New',Consolas,'Cascadia Code','SF Mono',Menlo,monospace;
+   --sans:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}}
+ *{{box-sizing:border-box}}
+ body{{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.75}}
+ .grid-bg{{position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;
+   background-image:linear-gradient(rgba(0,230,118,.15) 1px,transparent 1px),
+     linear-gradient(90deg,rgba(0,230,118,.15) 1px,transparent 1px);background-size:80px 80px}}
+ .wrap{{position:relative;z-index:1;max-width:960px;margin:0 auto;padding:2.5rem 1.25rem}}
+ .wordmark{{font-family:var(--mono);font-weight:700;font-size:1.5rem;letter-spacing:1.4px;color:var(--text)}}
+ .wordmark .dot{{color:var(--green)}}
+ .tagline{{font-family:var(--mono);font-size:.7rem;letter-spacing:.25em;text-transform:uppercase;
+   color:var(--text-muted);margin-top:.3rem}}
+ h1{{font-family:var(--mono);font-size:1.9rem;margin:1.6rem 0 .3rem;color:var(--text)}}
+ .lede{{color:var(--text-muted);margin:0 0 1.5rem;max-width:60ch}}
  .cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin:1.5rem 0}}
- .card{{border:1px solid var(--line);border-radius:10px;padding:1rem}}
- .card h3{{margin:0 0 .5rem;font-size:.9rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}}
- .card .big{{font-size:1.8rem;font-weight:700}} .card .sub{{color:var(--muted);font-size:.85rem}}
- .card a{{text-decoration:none;color:inherit}} .card a:hover .big{{color:var(--accent)}}
- table{{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.92rem}}
- th,td{{border:1px solid var(--line);padding:.45rem .6rem;text-align:center}}
- th:first-child,td:first-child{{text-align:left}}
- h2{{margin-top:2.2rem;padding-top:.4rem;border-top:2px solid var(--line)}}
- a{{color:var(--accent)}} .ko{{color:#c00;font-weight:600}} .empty,.note{{color:var(--muted);font-size:.9rem}}
- footer{{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--muted);font-size:.85rem}}
- @media(prefers-color-scheme:dark){{:root{{--fg:#e8e8e8;--muted:#9aa;--line:#333;--bg:#141414}}}}
-</style></head><body><div class="wrap">
-<h1>southbyte — Modell-Evaluationen</h1>
+ .card{{border:1px solid var(--border);border-radius:10px;padding:1rem;background:var(--bg-card)}}
+ .card h3{{margin:0 0 .5rem;font-family:var(--mono);font-size:.72rem;color:var(--text-muted);
+   text-transform:uppercase;letter-spacing:.1em}}
+ .card .big{{font-size:1.8rem;font-weight:700;color:var(--text)}} .card .sub{{color:var(--text-muted);font-size:.85rem}}
+ .card a{{text-decoration:none;color:inherit}} .card a:hover .big{{color:var(--green)}}
+ h2{{font-family:var(--mono);text-transform:uppercase;letter-spacing:.15em;color:var(--green);font-size:1.05rem;
+   margin-top:2.4rem;padding-top:.8rem;border-top:1px solid var(--border-hi)}}
+ table{{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.9rem}}
+ th,td{{border:1px solid var(--border);padding:.45rem .6rem;text-align:center}}
+ th{{font-family:var(--mono);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;
+   color:var(--text-muted);background:var(--bg-raised)}}
+ th:first-child,td:first-child{{text-align:left}} tbody tr:hover{{background:var(--bg-raised)}}
+ code{{font-family:var(--mono);color:var(--green);background:var(--bg-card);padding:.05em .35em;border-radius:4px}}
+ a{{color:var(--green)}} a:hover{{color:var(--green-dim)}} strong{{color:var(--text)}}
+ .ko{{color:var(--ko);font-weight:600}} .empty,.note{{color:var(--text-muted);font-size:.9rem}}
+ footer{{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--border);color:var(--text-muted);font-size:.82rem}}
+ footer .wm{{font-family:var(--mono);font-weight:700;letter-spacing:1px;color:var(--text)}}
+ footer .wm .dot{{color:var(--green)}}
+</style></head><body><div class="grid-bg"></div><div class="wrap">
+<header><div class="wordmark">SOUTH<span class="dot">.</span>BYTE</div>
+<div class="tagline">AI Governance &amp; IT-Beratung</div></header>
+<h1>Modell-Evaluationen</h1>
 <p class="lede">Kennzahlen-Überblick über alle Modell-Arten auf dem NVIDIA DGX Spark (GB10).
 Detailberichte bleiben lokal; hier die kuratierten Ergebnisse.</p>
 <div class="cards">{cards}</div>
-{llm_sec}
+{local_sec}
+{saas_sec}
 {g_sec}
 {tts_sec}
 {i_sec}
-<footer>Teil der <a href="https://github.com/MvdB?tab=repositories&amp;q=southbyte">southbyte</a>-Familie ·
-Built by <a href="https://southbyte.de">southbyte</a>.</footer>
+<footer><span class="wm">SOUTH<span class="dot">.</span>BYTE</span> — Michael van den Berg ·
+Teil der <a href="https://github.com/MvdB?tab=repositories&amp;q=southbyte">southbyte</a>-Familie ·
+<a href="https://southbyte.de">southbyte.de</a></footer>
 </div></body></html>
 """
 
@@ -255,9 +298,13 @@ def main() -> int:
     (DOCS / ".nojekyll").write_text("", encoding="utf-8")
     (DOCS / "index.html").write_text(build(), encoding="utf-8")
     print(f"✓ docs/index.html gebaut  (guards={len(load_guards())}, image={len(load_image())})")
-    # summary.json aus denselben Feeds — Zahlen matchen die gerenderte Seite (TTS nur verlinkt → 0)
-    llm = load_llm_reports() or {"run": "unknown", "rows": []}
-    write_summary(llm["run"], llm["rows"], load_guards(), load_image())
+    # summary.json aus denselben Feeds — Zahlen matchen die gerenderte Seite (TTS nur verlinkt → 0).
+    # llm-Zahl = lokal + SaaS zusammen; run/Datum = jüngster der beiden Läufe.
+    runs = load_llm_runs()
+    local = runs["local"] or {"run": None, "rows": []}
+    saas = runs["saas"] or {"run": None, "rows": []}
+    newest = saas["run"] or local["run"] or "unknown"
+    write_summary(newest, local["rows"] + saas["rows"], load_guards(), load_image())
     return 0
 
 

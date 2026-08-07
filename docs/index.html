@@ -1,40 +1,66 @@
 <!doctype html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>southbyte — Modell-Evaluationen (DGX Spark)</title>
+<title>SOUTH.BYTE — Modell-Evaluationen (DGX Spark)</title>
 <style>
- :root{--fg:#1a1a1a;--muted:#666;--line:#e2e2e2;--accent:#06c;--bg:#fff}
- body{font-family:system-ui,sans-serif;margin:0;color:var(--fg);background:var(--bg);line-height:1.5}
- .wrap{max-width:960px;margin:0 auto;padding:2rem 1.25rem}
- h1{margin:.2rem 0} .lede{color:var(--muted);margin:0 0 1.5rem}
+ :root{--bg:#060C0A;--bg-raised:#0A1410;--bg-card:#0E1A14;--border:#162A1E;--border-hi:#1A5C38;
+   --green:#00E676;--green-dim:#00994A;--amber:#F59E0B;--text:#D4EDE0;--text-muted:#5E8A72;--text-dim:#2E5040;
+   --ko:#FF5A5A;--mono:'Courier New',Consolas,'Cascadia Code','SF Mono',Menlo,monospace;
+   --sans:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+ *{box-sizing:border-box}
+ body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.75}
+ .grid-bg{position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;
+   background-image:linear-gradient(rgba(0,230,118,.15) 1px,transparent 1px),
+     linear-gradient(90deg,rgba(0,230,118,.15) 1px,transparent 1px);background-size:80px 80px}
+ .wrap{position:relative;z-index:1;max-width:960px;margin:0 auto;padding:2.5rem 1.25rem}
+ .wordmark{font-family:var(--mono);font-weight:700;font-size:1.5rem;letter-spacing:1.4px;color:var(--text)}
+ .wordmark .dot{color:var(--green)}
+ .tagline{font-family:var(--mono);font-size:.7rem;letter-spacing:.25em;text-transform:uppercase;
+   color:var(--text-muted);margin-top:.3rem}
+ h1{font-family:var(--mono);font-size:1.9rem;margin:1.6rem 0 .3rem;color:var(--text)}
+ .lede{color:var(--text-muted);margin:0 0 1.5rem;max-width:60ch}
  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin:1.5rem 0}
- .card{border:1px solid var(--line);border-radius:10px;padding:1rem}
- .card h3{margin:0 0 .5rem;font-size:.9rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
- .card .big{font-size:1.8rem;font-weight:700} .card .sub{color:var(--muted);font-size:.85rem}
- .card a{text-decoration:none;color:inherit} .card a:hover .big{color:var(--accent)}
- table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.92rem}
- th,td{border:1px solid var(--line);padding:.45rem .6rem;text-align:center}
- th:first-child,td:first-child{text-align:left}
- h2{margin-top:2.2rem;padding-top:.4rem;border-top:2px solid var(--line)}
- a{color:var(--accent)} .ko{color:#c00;font-weight:600} .empty,.note{color:var(--muted);font-size:.9rem}
- footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--muted);font-size:.85rem}
- @media(prefers-color-scheme:dark){:root{--fg:#e8e8e8;--muted:#9aa;--line:#333;--bg:#141414}}
-</style></head><body><div class="wrap">
-<h1>southbyte — Modell-Evaluationen</h1>
+ .card{border:1px solid var(--border);border-radius:10px;padding:1rem;background:var(--bg-card)}
+ .card h3{margin:0 0 .5rem;font-family:var(--mono);font-size:.72rem;color:var(--text-muted);
+   text-transform:uppercase;letter-spacing:.1em}
+ .card .big{font-size:1.8rem;font-weight:700;color:var(--text)} .card .sub{color:var(--text-muted);font-size:.85rem}
+ .card a{text-decoration:none;color:inherit} .card a:hover .big{color:var(--green)}
+ h2{font-family:var(--mono);text-transform:uppercase;letter-spacing:.15em;color:var(--green);font-size:1.05rem;
+   margin-top:2.4rem;padding-top:.8rem;border-top:1px solid var(--border-hi)}
+ table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.9rem}
+ th,td{border:1px solid var(--border);padding:.45rem .6rem;text-align:center}
+ th{font-family:var(--mono);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;
+   color:var(--text-muted);background:var(--bg-raised)}
+ th:first-child,td:first-child{text-align:left} tbody tr:hover{background:var(--bg-raised)}
+ code{font-family:var(--mono);color:var(--green);background:var(--bg-card);padding:.05em .35em;border-radius:4px}
+ a{color:var(--green)} a:hover{color:var(--green-dim)} strong{color:var(--text)}
+ .ko{color:var(--ko);font-weight:600} .empty,.note{color:var(--text-muted);font-size:.9rem}
+ footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--border);color:var(--text-muted);font-size:.82rem}
+ footer .wm{font-family:var(--mono);font-weight:700;letter-spacing:1px;color:var(--text)}
+ footer .wm .dot{color:var(--green)}
+</style></head><body><div class="grid-bg"></div><div class="wrap">
+<header><div class="wordmark">SOUTH<span class="dot">.</span>BYTE</div>
+<div class="tagline">AI Governance &amp; IT-Beratung</div></header>
+<h1>Modell-Evaluationen</h1>
 <p class="lede">Kennzahlen-Überblick über alle Modell-Arten auf dem NVIDIA DGX Spark (GB10).
 Detailberichte bleiben lokal; hier die kuratierten Ergebnisse.</p>
-<div class="cards"><div class="card"><h3>LLM (vLLM)</h3><a href="#llm"><div class="big">32</div><div class="sub">Modelle · Top 88%</div></a></div>
+<div class="cards"><div class="card"><h3>LLM lokal</h3><a href="#llm-local"><div class="big">32</div><div class="sub">Modelle · Top 88%</div></a></div>
+<div class="card"><h3>LLM SaaS</h3><a href="#llm-saas"><div class="big">10</div><div class="sub">Modelle · Top 91%</div></a></div>
 <div class="card"><h3>Guards</h3><a href="#guards"><div class="big">1.000</div><div class="sub">bestes F1 · gpt-oss-safeguard</div></a></div>
 <div class="card"><h3>TTS</h3><a href="https://mvdb.github.io/southbyte-tts/"><div class="big">→</div><div class="sub">Vergleich anhören</div></a></div>
 <div class="card"><h3>Image</h3><a href="https://mvdb.github.io/southbyte-image/"><div class="big">3</div><div class="sub">Modelle · schnellstes FLUX.1-schnell</div></a></div></div>
-<h2 id="llm">LLM (vLLM-Testplan)</h2>
-<p>Lauf <code>2026-07-11_1001</code> · 32 Modelle · Pass-Rate je Playbook. <strong>Sicherheit (04) ist bewusst nicht publiziert</strong> — Jailbreak-/PII-Rohausgaben bleiben lokal. Nur Kennzahlen, keine Transkripte.</p>
+<h2 id="llm-local">LLM — Lokale Modelle (DGX Spark)</h2>
+<p>Auf dem GB10 selbst serviert (vLLM), Judge-bewertet. Lauf <code>2026-07-11_1001</code> · 32 Modelle · Pass-Rate je Playbook. <strong>Sicherheit (04) ist bewusst nicht publiziert</strong> — Jailbreak-/PII-Rohausgaben bleiben lokal. Nur Kennzahlen, keine Transkripte.</p>
 <div style="overflow-x:auto"><table><thead><tr><th>Modell</th><th>Gesamt</th><th>K.O.</th><th>Qualität</th><th>Deutsch</th><th>Bias</th><th>Code</th><th>Performance</th></tr></thead><tbody><tr><td>Gemma-4-31B</td><td><span class="ko">K.O.</span> 88%</td><td>6</td><td>82%</td><td>100%</td><td>100%</td><td>100%</td><td>100%</td></tr><tr><td>Qwen3.5-122B-A10B</td><td><span class="ko">K.O.</span> 87%</td><td>1</td><td>83%</td><td>100%</td><td>100%</td><td>70%</td><td>100%</td></tr><tr><td>Gemma-4-31B-IT-NVFP4</td><td><span class="ko">K.O.</span> 86%</td><td>6</td><td>83%</td><td>100%</td><td>100%</td><td>80%</td><td>0%</td></tr><tr><td>Nemotron-3-Super</td><td><span class="ko">K.O.</span> 85%</td><td>10</td><td>81%</td><td>75%</td><td>100%</td><td>100%</td><td>100%</td></tr><tr><td>Gemma-4-26B-A4B</td><td><span class="ko">K.O.</span> 84%</td><td>5</td><td>79%</td><td>100%</td><td>100%</td><td>90%</td><td>100%</td></tr><tr><td>gpt-oss-120b</td><td><span class="ko">K.O.</span> 84%</td><td>9</td><td>71%</td><td>100%</td><td>100%</td><td>100%</td><td>100%</td></tr><tr><td>Qwen3.5-27B</td><td>WARN 83%</td><td>0</td><td>80%</td><td>75%</td><td>100%</td><td>70%</td><td>0%</td></tr><tr><td>Qwen3.5-35B-A3B</td><td>WARN 83%</td><td>0</td><td>80%</td><td>50%</td><td>100%</td><td>70%</td><td>100%</td></tr><tr><td>Qwen3.6-27B-FP8</td><td><span class="ko">K.O.</span> 82%</td><td>8</td><td>79%</td><td>100%</td><td>100%</td><td>50%</td><td>100%</td></tr><tr><td>Gemma-4-E4B</td><td><span class="ko">K.O.</span> 79%</td><td>5</td><td>76%</td><td>75%</td><td>100%</td><td>60%</td><td>0%</td></tr><tr><td>Qwen3.5-27B-FP8</td><td><span class="ko">K.O.</span> 79%</td><td>5</td><td>78%</td><td>50%</td><td>100%</td><td>60%</td><td>100%</td></tr><tr><td>Qwen3.6-35B-A3B-FP8</td><td><span class="ko">K.O.</span> 76%</td><td>8</td><td>76%</td><td>25%</td><td>100%</td><td>50%</td><td>100%</td></tr><tr><td>Mistral-Small-4</td><td><span class="ko">K.O.</span> 74%</td><td>11</td><td>66%</td><td>100%</td><td>100%</td><td>80%</td><td>100%</td></tr><tr><td>Nemotron-3-Nano-30B</td><td><span class="ko">K.O.</span> 74%</td><td>10</td><td>59%</td><td>75%</td><td>100%</td><td>90%</td><td>100%</td></tr><tr><td>Gemma-4-E2B</td><td><span class="ko">K.O.</span> 73%</td><td>6</td><td>71%</td><td>50%</td><td>100%</td><td>70%</td><td>0%</td></tr><tr><td>Nemotron-3-Nano-Omni-30B</td><td><span class="ko">K.O.</span> 73%</td><td>7</td><td>61%</td><td>75%</td><td>100%</td><td>70%</td><td>100%</td></tr><tr><td>Qwen3.5-9B</td><td><span class="ko">K.O.</span> 71%</td><td>9</td><td>71%</td><td>25%</td><td>100%</td><td>60%</td><td>0%</td></tr><tr><td>gpt-oss-20b</td><td><span class="ko">K.O.</span> 71%</td><td>5</td><td>66%</td><td>0%</td><td>100%</td><td>70%</td><td>0%</td></tr><tr><td>Devstral-Small-2-24B</td><td><span class="ko">K.O.</span> 70%</td><td>14</td><td>61%</td><td>100%</td><td>100%</td><td>70%</td><td>0%</td></tr><tr><td>Granite-4.1-30B</td><td><span class="ko">K.O.</span> 70%</td><td>14</td><td>63%</td><td>50%</td><td>100%</td><td>90%</td><td>100%</td></tr><tr><td>Ministral-3-8B-Instruct</td><td><span class="ko">K.O.</span> 69%</td><td>12</td><td>56%</td><td>75%</td><td>100%</td><td>80%</td><td>100%</td></tr><tr><td>Mistral-Small-3.2-24B</td><td><span class="ko">K.O.</span> 69%</td><td>10</td><td>61%</td><td>100%</td><td>100%</td><td>60%</td><td>0%</td></tr><tr><td>Ministral-3-14B-Instruct</td><td><span class="ko">K.O.</span> 68%</td><td>13</td><td>56%</td><td>100%</td><td>100%</td><td>60%</td><td>100%</td></tr><tr><td>Mistral-Small-3.2-24B-NVFP4</td><td><span class="ko">K.O.</span> 68%</td><td>11</td><td>61%</td><td>100%</td><td>100%</td><td>60%</td><td>100%</td></tr><tr><td>Ministral-3-14B-Reasoning</td><td><span class="ko">K.O.</span> 64%</td><td>13</td><td>51%</td><td>100%</td><td>100%</td><td>50%</td><td>0%</td></tr><tr><td>Qwen3.5-4B</td><td><span class="ko">K.O.</span> 61%</td><td>11</td><td>51%</td><td>50%</td><td>100%</td><td>50%</td><td>100%</td></tr><tr><td>Ministral-3-8B-Reasoning</td><td><span class="ko">K.O.</span> 60%</td><td>13</td><td>49%</td><td>75%</td><td>100%</td><td>70%</td><td>0%</td></tr><tr><td>Mistral-Medium-3.5-128B-NVFP4</td><td><span class="ko">K.O.</span> 57%</td><td>9</td><td>49%</td><td>100%</td><td>33%</td><td>80%</td><td>100%</td></tr><tr><td>Ministral-3-3B-Reasoning</td><td><span class="ko">K.O.</span> 56%</td><td>12</td><td>44%</td><td>50%</td><td>100%</td><td>50%</td><td>100%</td></tr><tr><td>Qwen3.5-2B</td><td><span class="ko">K.O.</span> 51%</td><td>17</td><td>37%</td><td>25%</td><td>100%</td><td>30%</td><td>100%</td></tr><tr><td>Qwen3.5-0.8B</td><td><span class="ko">K.O.</span> 39%</td><td>18</td><td>20%</td><td>25%</td><td>100%</td><td>20%</td><td>100%</td></tr><tr><td>LFM2.5-VL-450M</td><td><span class="ko">K.O.</span> 29%</td><td>21</td><td>7%</td><td>0%</td><td>100%</td><td>10%</td><td>100%</td></tr></tbody></table></div>
+<h2 id="llm-saas">LLM — SaaS-Referenzkohorte</h2>
+<p>Frontier-Modelle über eine OpenAI-kompatible API als Referenzrahmen, gleicher Testsatz, Judge <code>claude-sonnet-5</code>. Lauf <code>2026-08-07_saas</code> · 10 Modelle · Pass-Rate je Playbook. <strong>Sicherheit (04) ist bewusst nicht publiziert</strong> — Jailbreak-/PII-Rohausgaben bleiben lokal. Nur Kennzahlen, keine Transkripte.</p>
+<div style="overflow-x:auto"><table><thead><tr><th>Modell</th><th>Gesamt</th><th>K.O.</th><th>Qualität</th><th>Deutsch</th><th>Bias</th><th>Code</th><th>Performance</th></tr></thead><tbody><tr><td>Claude-Sonnet-5</td><td><span class="ko">K.O.</span> 91%</td><td>1</td><td>92%</td><td>100%</td><td>78%</td><td>90%</td><td>—</td></tr><tr><td>Claude-Fable-5</td><td>PASS 86%</td><td>0</td><td>89%</td><td>100%</td><td>89%</td><td>60%</td><td>—</td></tr><tr><td>GPT-5.6-luna</td><td><span class="ko">K.O.</span> 81%</td><td>8</td><td>77%</td><td>75%</td><td>89%</td><td>100%</td><td>—</td></tr><tr><td>Claude-Opus-5</td><td><span class="ko">K.O.</span> 79%</td><td>1</td><td>76%</td><td>100%</td><td>78%</td><td>90%</td><td>—</td></tr><tr><td>Claude-Haiku-4.5</td><td><span class="ko">K.O.</span> 66%</td><td>7</td><td>66%</td><td>50%</td><td>78%</td><td>60%</td><td>—</td></tr><tr><td>GPT-5.6-sol</td><td><span class="ko">K.O.</span> 22%</td><td>3</td><td>31%</td><td>0%</td><td>0%</td><td>0%</td><td>—</td></tr><tr><td>GPT-5.6-terra</td><td><span class="ko">K.O.</span> 0%</td><td>0</td><td>0%</td><td>0%</td><td>0%</td><td>0%</td><td>—</td></tr><tr><td>Gemini-3.1-Pro</td><td><span class="ko">K.O.</span> 0%</td><td>0</td><td>0%</td><td>0%</td><td>0%</td><td>0%</td><td>—</td></tr><tr><td>Gemini-3.5-Flash-Lite</td><td><span class="ko">K.O.</span> 0%</td><td>0</td><td>0%</td><td>0%</td><td>0%</td><td>0%</td><td>—</td></tr><tr><td>Gemini-3.6-Flash</td><td><span class="ko">K.O.</span> 0%</td><td>0</td><td>0%</td><td>0%</td><td>0%</td><td>0%</td><td>—</td></tr></tbody></table></div>
 <h2 id="guards">Guardrails (Playbook 08)</h2>
 <table><thead><tr><th>Guard</th><th>n_unsafe</th><th>n_safe</th><th>recall</th><th>fn_rate</th><th>fpr</th><th>trap_fpr</th><th>precision</th><th>f1</th><th>accuracy</th><th>latency_ms_mean</th><th>latency_ms_p95</th><th>K.O.</th></tr></thead><tbody><tr><td>Granite-Guardian</td><td>38</td><td>44</td><td>0.974</td><td>0.026</td><td>0.023</td><td>0.042</td><td>0.974</td><td>0.974</td><td>0.976</td><td>1044.900</td><td>1049.900</td><td>✓</td></tr><tr><td>Nemotron-3</td><td>38</td><td>44</td><td>1.000</td><td>0.000</td><td>0.045</td><td>0.083</td><td>0.950</td><td>0.974</td><td>0.976</td><td>493.200</td><td>868.400</td><td>✓</td></tr><tr><td>Nemotron-3.5</td><td>38</td><td>44</td><td>1.000</td><td>0.000</td><td>0.045</td><td>0.083</td><td>0.950</td><td>0.974</td><td>0.976</td><td>562.900</td><td>916.700</td><td>✓</td></tr><tr><td>gpt-oss-safeguard</td><td>38</td><td>44</td><td>1.000</td><td>0.000</td><td>0.000</td><td>0.000</td><td>1.000</td><td>1.000</td><td>1.000</td><td>1566.800</td><td>3137.800</td><td>✓</td></tr><tr><td>Shieldstral</td><td>38</td><td>44</td><td>1.000</td><td>0.000</td><td>0.023</td><td>0.042</td><td>0.974</td><td>0.987</td><td>0.988</td><td>44.300</td><td>45.700</td><td>✓</td></tr></tbody></table>
 <h2 id="tts">TTS</h2>
 <p>Deutscher TTS-Vergleich mit anhörbaren Beispielen: <a href="https://mvdb.github.io/southbyte-tts/">https://mvdb.github.io/southbyte-tts/</a></p>
 <h2 id="image">Text-to-Image</h2>
 <table><thead><tr><th>Modell</th><th>Bilder</th><th>Ø s/Bild</th><th>Textrender CER</th><th>Textrender exakt</th><th>Prompt-Treue</th></tr></thead><tbody><tr><td>FLUX.1-schnell</td><td>22</td><td>6.840</td><td>0.159</td><td>0.333</td><td>0.727</td></tr><tr><td>Qwen-Image-2512</td><td>22</td><td>138.960</td><td>0.070</td><td>0.500</td><td>0.927</td></tr><tr><td>Qwen-Image-Flash</td><td>22</td><td>22.570</td><td>0.047</td><td>0.500</td><td>0.924</td></tr></tbody></table><p class="note">Vollständige Galerie: <a href="https://mvdb.github.io/southbyte-image/">https://mvdb.github.io/southbyte-image/</a></p>
-<footer>Teil der <a href="https://github.com/MvdB?tab=repositories&amp;q=southbyte">southbyte</a>-Familie ·
-Built by <a href="https://southbyte.de">southbyte</a>.</footer>
+<footer><span class="wm">SOUTH<span class="dot">.</span>BYTE</span> — Michael van den Berg ·
+Teil der <a href="https://github.com/MvdB?tab=repositories&amp;q=southbyte">southbyte</a>-Familie ·
+<a href="https://southbyte.de">southbyte.de</a></footer>
 </div></body></html>
