@@ -41,7 +41,11 @@ TTS links out to its own published comparison
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+- **Content & data** (metrics, testsets, generated-image gallery, write-ups):
+  [**CC BY-NC 4.0**](https://creativecommons.org/licenses/by-nc/4.0/) — share/adapt
+  with attribution, non-commercial.
+- **Code** (`build_site.py`): MIT — see [LICENSE](LICENSE).
+- **Model outputs & names** remain under their providers' terms — see [NOTICE.md](NOTICE.md).
 
 ---
 
