@@ -23,6 +23,7 @@ IMAGE_RESULTS = Path(os.environ.get("IMAGE_RESULTS", HOME / "southbyte/southbyte
 DOCS = Path(__file__).resolve().parent / "docs"
 
 TTS_URL = "https://mvdb.github.io/southbyte-tts/"
+IMAGE_URL = "https://mvdb.github.io/southbyte-image/"
 
 
 # ── Feeds laden ──────────────────────────────────────────────────────────────
@@ -98,9 +99,9 @@ def image_section(imgs: list[dict]) -> tuple[str, str]:
              num(d.get("adherence_score_mean"))] for d in imgs]
     sec = ('<h2 id="image">Text-to-Image</h2>\n'
            + table(["Modell", "Bilder", "Ø s/Bild", "Textrender CER", "Textrender exakt", "Prompt-Treue"], rows)
-           + '<p class="note">Galerie: siehe <code>southbyte-image/docs/</code>.</p>')
+           + f'<p class="note">Vollständige Galerie: <a href="{IMAGE_URL}">{IMAGE_URL}</a></p>')
     fastest = min(imgs, key=lambda d: d.get("gen_seconds_mean") or 9e9)
-    c = card("Image", f'{len(imgs)}', f'Modelle · schnellstes {fastest.get("model")}', "#image")
+    c = card("Image", f'{len(imgs)}', f'Modelle · schnellstes {fastest.get("model")}', IMAGE_URL)
     return sec, c
 
 
