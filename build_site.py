@@ -36,6 +36,41 @@ PLAYBOOK_LABELS = {
     "05_code": "Code", "06_performance": "Performance",
 }
 
+# Lizenzen: aus dem von make_public_site gepflegten Cache (kein HF-Fetch hier).
+_LICENSE_CACHE = REPORTS_DIR.parent / "license_cache.json"
+try:
+    _lic = json.loads(_LICENSE_CACHE.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError):
+    _lic = {}
+_SAAS_PROVIDER = [
+    ("claude", "Anthropic · proprietär", "https://www.anthropic.com/claude"),
+    ("gpt", "OpenAI · proprietär", "https://platform.openai.com/docs/models"),
+    ("gemini", "Google · proprietär", "https://ai.google.dev/gemini-api/docs/models"),
+    ("grok", "xAI · proprietär", "https://docs.x.ai/docs/models"),
+    ("xai", "xAI · proprietär", "https://docs.x.ai/docs/models"),
+    ("magistral", "Mistral · proprietär", "https://docs.mistral.ai/getting-started/models/"),
+    ("ministral", "Mistral · proprietär", "https://docs.mistral.ai/getting-started/models/"),
+    ("mistral", "Mistral · proprietär", "https://docs.mistral.ai/getting-started/models/"),
+]
+
+
+def model_license(profile: str, is_saas: bool) -> str:
+    if is_saas:
+        for needle, label, _ in _SAAS_PROVIDER:
+            if needle in profile.lower():
+                return label
+        return "proprietär (API)"
+    return _lic.get(profile, "—")
+
+
+def model_repo(profile: str, is_saas: bool) -> str:
+    if is_saas:
+        for needle, _, url in _SAAS_PROVIDER:
+            if needle in profile.lower():
+                return url
+        return ""
+    return "https://huggingface.co/" + profile.replace("--", "/", 1) if "--" in profile else ""
+
 
 # ── Feeds laden ──────────────────────────────────────────────────────────────
 def slugify(s) -> str:
@@ -93,7 +128,8 @@ def _load_run_rows(files: list[Path]) -> tuple[list[dict], int]:
         pr = {k: v.get("pass_rate") for k, v in pbs.items()
               if k not in EXCLUDE_PLAYBOOKS and isinstance(v, dict)}
         rows.append({"model": name, "overall": summ.get("overall"), "pass_rate": summ.get("pass_rate"),
-                     "ko": summ.get("knockouts", 0), "pb": pr, "stem": j.stem})
+                     "ko": summ.get("knockouts", 0), "pb": pr, "stem": j.stem,
+                     "profile": meta.get("profile", ""), "is_saas": meta.get("source") == "saas_proxy"})
     rows.sort(key=lambda r: float(r["pass_rate"] or 0), reverse=True)
     return rows, saas
 
@@ -184,16 +220,19 @@ def llm_chapter(data: dict | None, cid: str, title: str, lead: str, card_title: 
     if not data or not data["rows"]:
         return "", card(card_title, "—", "keine Berichte")
     cols = list(PLAYBOOK_LABELS)
-    header = ["Modell", "Gesamt", "K.O."] + [PLAYBOOK_LABELS[c] for c in cols]
+    header = ["Modell", "Gesamt", "K.O."] + [PLAYBOOK_LABELS[c] for c in cols] + ["Lizenz"]
     rows = []
     for r in data["rows"]:
         ov = r["overall"] or "—"
         ov_html = f'<span class="ko">{esc(ov)}</span>' if ov == "K.O." else esc(ov)
-        link = f'<a href="{LLM_URL}m/{esc(r["stem"])}.html">{esc(r["model"])}</a>'
+        url = model_repo(r["profile"], r["is_saas"])
+        hf = f' <a href="{esc(url)}" title="Repo/Anbieter">↗</a>' if url else ""
+        link = f'<a href="{LLM_URL}m/{esc(r["stem"])}.html">{esc(r["model"])}</a>{hf}'
         cells = [link, f'{ov_html} {esc(r["pass_rate"])}%', str(r["ko"] or 0)]
         for c in cols:
             v = r["pb"].get(c)
             cells.append("—" if v is None else f"{round(float(v) * 100)}%")
+        cells.append(esc(model_license(r["profile"], r["is_saas"])))
         rows.append(cells)
     best = data["rows"][0]
     sec = (f'<h2 id="{cid}">{esc(title)}</h2>\n'
