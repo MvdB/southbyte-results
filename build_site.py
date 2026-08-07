@@ -72,6 +72,18 @@ def _load_run_rows(files: list[Path]) -> tuple[list[dict], int]:
         except (OSError, json.JSONDecodeError):
             continue
         meta, summ, pbs = d.get("meta", {}), d.get("summary", {}), d.get("playbooks", {})
+        # Abgebrochene Läufe (z.B. Budget-Cap → ERROR-Verdikte) NICHT publizieren:
+        # ihre 0%/K.O. wären irreführend (Harness-Fehler, keine Modellqualität).
+        total = err = 0
+        for k, v in pbs.items():
+            if k in EXCLUDE_PLAYBOOKS or not isinstance(v, dict):
+                continue
+            for res in v.get("results", []):
+                total += 1
+                if res.get("verdict") == "error":
+                    err += 1
+        if total == 0 or err / total > 0.3:
+            continue  # kein verwertbarer Lauf für dieses Modell
         if meta.get("source") == "saas_proxy":
             saas += 1
         name = str(meta.get("model") or j.stem).rsplit("/", 1)[-1]
@@ -94,7 +106,9 @@ def load_llm_runs() -> dict:
         if len(models) < 5:
             continue
         rows, nsaas = _load_run_rows(sorted(models))
-        kind = "saas" if nsaas * 2 >= len(models) else "local"
+        if len(rows) < 5:  # nach Filter zu wenige verwertbare Modelle
+            continue
+        kind = "saas" if nsaas * 2 >= len(rows) else "local"
         if kind == "saas" and saas is None:
             saas = {"run": d.name, "rows": rows}
         elif kind == "local" and local is None:
