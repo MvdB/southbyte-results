@@ -16,6 +16,7 @@ import html
 import json
 import os
 import re
+from datetime import date, datetime
 from pathlib import Path
 
 HOME = Path.home()
@@ -172,6 +173,35 @@ def llm_section() -> tuple[str, str]:
     return sec, c
 
 
+def write_summary(run_id, llm_models, guard_models, image_models, tts_models=()) -> dict:
+    """Schreibt docs/summary.json — die einzige Quelle für southbyte.de-Chips.
+
+    run_id   – z.B. "2026-07-11_1001"; das Datum wird daraus abgeleitet.
+    *_models – Sequenzen der ausgewerteten Modelle (nur Anzahlen gehen raus).
+    Bewusst knapp: keine Modellnamen, keine Pass-Raten, nichts aus 04_security —
+    damit die Datei unbedenklich öffentlich stehen kann.
+    """
+    try:
+        run_date = datetime.strptime(run_id.split("_")[0], "%Y-%m-%d").date()
+    except (ValueError, AttributeError, IndexError):
+        run_date = date.today()
+
+    payload = {
+        "run": run_id,
+        "date": run_date.isoformat(),
+        "counts": {
+            "llm": len(llm_models),
+            "guard": len(guard_models),
+            "image": len(image_models),
+            "tts": len(tts_models),
+        },
+        "url": "https://mvdb.github.io/southbyte-results/",
+    }
+    (DOCS / "summary.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    print(f"✓ docs/summary.json  {payload['counts']}")
+    return payload
+
+
 def build() -> str:
     guards = load_guards()
     imgs = load_image()
@@ -225,6 +255,9 @@ def main() -> int:
     (DOCS / ".nojekyll").write_text("", encoding="utf-8")
     (DOCS / "index.html").write_text(build(), encoding="utf-8")
     print(f"✓ docs/index.html gebaut  (guards={len(load_guards())}, image={len(load_image())})")
+    # summary.json aus denselben Feeds — Zahlen matchen die gerenderte Seite (TTS nur verlinkt → 0)
+    llm = load_llm_reports() or {"run": "unknown", "rows": []}
+    write_summary(llm["run"], llm["rows"], load_guards(), load_image())
     return 0
 
 
