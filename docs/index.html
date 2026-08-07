@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>southbyte — Modell-Evaluationen (DGX Spark)</title>
+<style>
+ :root{--fg:#1a1a1a;--muted:#666;--line:#e2e2e2;--accent:#06c;--bg:#fff}
+ body{font-family:system-ui,sans-serif;margin:0;color:var(--fg);background:var(--bg);line-height:1.5}
+ .wrap{max-width:960px;margin:0 auto;padding:2rem 1.25rem}
+ h1{margin:.2rem 0} .lede{color:var(--muted);margin:0 0 1.5rem}
+ .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin:1.5rem 0}
+ .card{border:1px solid var(--line);border-radius:10px;padding:1rem}
+ .card h3{margin:0 0 .5rem;font-size:.9rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+ .card .big{font-size:1.8rem;font-weight:700} .card .sub{color:var(--muted);font-size:.85rem}
+ .card a{text-decoration:none;color:inherit} .card a:hover .big{color:var(--accent)}
+ table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.92rem}
+ th,td{border:1px solid var(--line);padding:.45rem .6rem;text-align:center}
+ th:first-child,td:first-child{text-align:left}
+ h2{margin-top:2.2rem;padding-top:.4rem;border-top:2px solid var(--line)}
+ a{color:var(--accent)} .ko{color:#c00;font-weight:600} .empty,.note{color:var(--muted);font-size:.9rem}
+ footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--muted);font-size:.85rem}
+ @media(prefers-color-scheme:dark){:root{--fg:#e8e8e8;--muted:#9aa;--line:#333;--bg:#141414}}
+</style></head><body><div class="wrap">
+<h1>southbyte — Modell-Evaluationen</h1>
+<p class="lede">Kennzahlen-Überblick über alle Modell-Arten auf dem NVIDIA DGX Spark (GB10).
+Detailberichte bleiben lokal; hier die kuratierten Ergebnisse.</p>
+<div class="cards"><div class="card"><h3>LLM (vLLM)</h3><a href="#llm"><div class="big">8</div><div class="sub">Playbooks · Detail lokal</div></a></div>
+<div class="card"><h3>Guards</h3><a href="#guards"><div class="big">1.000</div><div class="sub">bestes F1 · gpt-oss-safeguard</div></a></div>
+<div class="card"><h3>TTS</h3><a href="https://mvdb.github.io/southbyte-tts/"><div class="big">→</div><div class="sub">Vergleich anhören</div></a></div>
+<div class="card"><h3>Image</h3><a href="#image"><div class="big">1</div><div class="sub">Modelle · schnellstes FLUX.1-schnell</div></a></div></div>
+<h2 id="llm">LLM (vLLM-Testplan)</h2>
+<p>Acht Playbooks: Qualität (Halluzination, Faktentreue, Kohärenz, Instruktions-Treue), Deutsch, Bias (Chi²), Sicherheit (Prompt-Injection, PII, Jailbreak), Code (Korrektheit + SAST), Performance (TTFT/Durchsatz), Hardware-Scaling, Guardrails. Die vollständigen Berichte bleiben bewusst lokal (Sicherheits-/Bias-Detail) — hier nur Kennzahlen-Überblick.</p>
+<h2 id="guards">Guardrails (Playbook 08)</h2>
+<table><thead><tr><th>Guard</th><th>n_unsafe</th><th>n_safe</th><th>recall</th><th>fn_rate</th><th>fpr</th><th>trap_fpr</th><th>precision</th><th>f1</th><th>accuracy</th><th>latency_ms_mean</th><th>latency_ms_p95</th><th>K.O.</th></tr></thead><tbody><tr><td>Granite-Guardian</td><td>38</td><td>44</td><td>0.974</td><td>0.026</td><td>0.023</td><td>0.042</td><td>0.974</td><td>0.974</td><td>0.976</td><td>1044.900</td><td>1049.900</td><td>✓</td></tr><tr><td>Nemotron-3</td><td>38</td><td>44</td><td>1.000</td><td>0.000</td><td>0.045</td><td>0.083</td><td>0.950</td><td>0.974</td><td>0.976</td><td>493.200</td><td>868.400</td><td>✓</td></tr><tr><td>Nemotron-3.5</td><td>38</td><td>44</td><td>1.000</td><td>0.000</td><td>0.045</td><td>0.083</td><td>0.950</td><td>0.974</td><td>0.976</td><td>562.900</td><td>916.700</td><td>✓</td></tr><tr><td>gpt-oss-safeguard</td><td>38</td><td>44</td><td>1.000</td><td>0.000</td><td>0.000</td><td>0.000</td><td>1.000</td><td>1.000</td><td>1.000</td><td>1566.800</td><td>3137.800</td><td>✓</td></tr><tr><td>Shieldstral</td><td>38</td><td>44</td><td>1.000</td><td>0.000</td><td>0.023</td><td>0.042</td><td>0.974</td><td>0.987</td><td>0.988</td><td>44.300</td><td>45.700</td><td>✓</td></tr></tbody></table>
+<h2 id="tts">TTS</h2>
+<p>Deutscher TTS-Vergleich mit anhörbaren Beispielen: <a href="https://mvdb.github.io/southbyte-tts/">https://mvdb.github.io/southbyte-tts/</a></p>
+<h2 id="image">Text-to-Image</h2>
+<table><thead><tr><th>Modell</th><th>Bilder</th><th>Ø s/Bild</th><th>Textrender CER</th><th>Textrender exakt</th><th>Prompt-Treue</th></tr></thead><tbody><tr><td>FLUX.1-schnell</td><td>22</td><td>6.840</td><td>—</td><td>—</td><td>—</td></tr></tbody></table><p class="note">Galerie: siehe <code>southbyte-image/docs/</code>.</p>
+<footer>Teil der <a href="https://github.com/MvdB?tab=repositories&amp;q=southbyte">southbyte</a>-Familie ·
+Built by <a href="https://southbyte.de">southbyte</a>.</footer>
+</div></body></html>
