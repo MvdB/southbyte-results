@@ -6,9 +6,10 @@ Spark toolkit, as one easy-to-use website:
 **→ https://mvdb.github.io/southbyte-results/**
 
 It pulls headline metrics from every stack — LLM (vLLM testplan), guardrails,
-TTS, and text-to-image — into a single overview. **Curated summaries only:** the
-detailed LLM security/bias reports are deliberately kept local (they're gitignored
-in `southbyte-vllm`), so only aggregate numbers and links are published here.
+TTS, and text-to-image — into a single overview. **Curated metrics only:** the
+site publishes per-playbook pass-rates, but the **`04_security` playbook and all
+raw per-case transcripts stay local** (never emitted), and model paths are stripped
+to bare names. `.env`/`config/` are never read by the build.
 
 ## How it's built
 
@@ -25,6 +26,7 @@ Feeds (override via env):
 |---|---|---|
 | `GUARDS_DIR` | `~/southbyte/southbyte-vllm/testplan/reports/guardrails` | guard-model field run (`*.json`) |
 | `IMAGE_RESULTS` | `~/southbyte/southbyte-image/results` | image field run (`*/summary.json`) |
+| `REPORTS_DIR` | `~/southbyte/southbyte-vllm/testplan/reports` | LLM testplan run (latest with ≥5 model JSONs; `04_security` + `results` transcripts dropped) |
 
 TTS links out to its own published comparison
 ([mvdb.github.io/southbyte-tts](https://mvdb.github.io/southbyte-tts/)).

@@ -15,15 +15,24 @@ from __future__ import annotations
 import html
 import json
 import os
+import re
 from pathlib import Path
 
 HOME = Path.home()
 GUARDS_DIR = Path(os.environ.get("GUARDS_DIR", HOME / "southbyte/southbyte-vllm/testplan/reports/guardrails"))
 IMAGE_RESULTS = Path(os.environ.get("IMAGE_RESULTS", HOME / "southbyte/southbyte-image/results"))
+REPORTS_DIR = Path(os.environ.get("REPORTS_DIR", HOME / "southbyte/southbyte-vllm/testplan/reports"))
 DOCS = Path(__file__).resolve().parent / "docs"
 
 TTS_URL = "https://mvdb.github.io/southbyte-tts/"
 IMAGE_URL = "https://mvdb.github.io/southbyte-image/"
+
+# Sicherheit (04) wird bewusst NICHT publiziert — Jailbreak/PII-Rohausgaben bleiben lokal.
+EXCLUDE_PLAYBOOKS = {"04_security"}
+PLAYBOOK_LABELS = {
+    "01_quality": "Qualität", "02_german_language": "Deutsch", "03_bias": "Bias",
+    "05_code": "Code", "06_performance": "Performance",
+}
 
 
 # ── Feeds laden ──────────────────────────────────────────────────────────────
@@ -49,6 +58,38 @@ def load_image() -> list[dict]:
             continue
         runs[d.get("model", s.parent.name)] = d
     return list(runs.values())
+
+
+def _latest_run(reports: Path):
+    for d in sorted(reports.glob("2026-*"), reverse=True):
+        models = [j for j in d.glob("*.json") if not re.search(r"dashboard|index", j.name, re.I)]
+        if len(models) >= 5:
+            return d, sorted(models)
+    return None, []
+
+
+def load_llm_reports() -> dict | None:
+    """Kuratierte Kennzahlen des jüngsten Laufs. Liest NUR reports/<run>/*.json —
+    niemals .env oder config/. Sicherheits-Playbook und die Roh-Transkripte
+    (playbooks[*].results) werden NICHT übernommen; nur Pass-Raten je Playbook.
+    Modellnamen werden vom /hf_models/-Präfix befreit."""
+    run, files = _latest_run(REPORTS_DIR)
+    if not run:
+        return None
+    rows = []
+    for j in files:
+        try:
+            d = json.loads(j.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        meta, summ, pbs = d.get("meta", {}), d.get("summary", {}), d.get("playbooks", {})
+        name = str(meta.get("model") or j.stem).rsplit("/", 1)[-1]
+        pr = {k: v.get("pass_rate") for k, v in pbs.items()
+              if k not in EXCLUDE_PLAYBOOKS and isinstance(v, dict)}
+        rows.append({"model": name, "overall": summ.get("overall"),
+                     "pass_rate": summ.get("pass_rate"), "ko": summ.get("knockouts", 0), "pb": pr})
+    rows.sort(key=lambda r: float(r["pass_rate"] or 0), reverse=True)
+    return {"run": run.name, "rows": rows}
 
 
 # ── Render-Helfer ────────────────────────────────────────────────────────────
@@ -105,24 +146,42 @@ def image_section(imgs: list[dict]) -> tuple[str, str]:
     return sec, c
 
 
+def llm_section() -> tuple[str, str]:
+    data = load_llm_reports()
+    if not data or not data["rows"]:
+        return ('<h2 id="llm">LLM (vLLM-Testplan)</h2>\n<p class="empty">Keine Berichte gefunden.</p>',
+                card("LLM (vLLM)", "—", "keine Berichte"))
+    cols = list(PLAYBOOK_LABELS)
+    header = ["Modell", "Gesamt", "K.O."] + [PLAYBOOK_LABELS[c] for c in cols]
+    rows = []
+    for r in data["rows"]:
+        ov = r["overall"] or "—"
+        ov_html = f'<span class="ko">{esc(ov)}</span>' if ov == "K.O." else esc(ov)
+        cells = [esc(r["model"]), f'{ov_html} {esc(r["pass_rate"])}%', str(r["ko"] or 0)]
+        for c in cols:
+            v = r["pb"].get(c)
+            cells.append("—" if v is None else f"{round(float(v) * 100)}%")
+        rows.append(cells)
+    best = data["rows"][0]
+    sec = (f'<h2 id="llm">LLM (vLLM-Testplan)</h2>\n'
+           f'<p>Lauf <code>{esc(data["run"])}</code> · {len(rows)} Modelle · Pass-Rate je Playbook. '
+           f'<strong>Sicherheit (04) ist bewusst nicht publiziert</strong> — Jailbreak-/PII-Rohausgaben '
+           f'bleiben lokal. Nur Kennzahlen, keine Transkripte.</p>\n'
+           f'<div style="overflow-x:auto">{table(header, rows)}</div>')
+    c = card("LLM (vLLM)", str(len(rows)), f'Modelle · Top {esc(best["pass_rate"])}%', "#llm")
+    return sec, c
+
+
 def build() -> str:
     guards = load_guards()
     imgs = load_image()
     g_sec, g_card = guards_section(guards)
     i_sec, i_card = image_section(imgs)
+    llm_sec, llm_card = llm_section()
 
-    llm_card = card("LLM (vLLM)", "8", "Playbooks · Detail lokal", "#llm")
     tts_card = card("TTS", "→", "Vergleich anhören", TTS_URL)
     cards = "\n".join([llm_card, g_card, tts_card, i_card])
 
-    llm_sec = (
-        '<h2 id="llm">LLM (vLLM-Testplan)</h2>\n'
-        '<p>Acht Playbooks: Qualität (Halluzination, Faktentreue, Kohärenz, '
-        'Instruktions-Treue), Deutsch, Bias (Chi²), Sicherheit (Prompt-Injection, '
-        'PII, Jailbreak), Code (Korrektheit + SAST), Performance (TTFT/Durchsatz), '
-        'Hardware-Scaling, Guardrails. Die vollständigen Berichte bleiben bewusst '
-        'lokal (Sicherheits-/Bias-Detail) — hier nur Kennzahlen-Überblick.</p>'
-    )
     tts_sec = (f'<h2 id="tts">TTS</h2>\n<p>Deutscher TTS-Vergleich mit '
                f'anhörbaren Beispielen: <a href="{TTS_URL}">{TTS_URL}</a></p>')
 
