@@ -226,7 +226,7 @@ def llm_chapter(data: dict | None, cid: str, title: str, lead: str, card_title: 
         ov = r["overall"] or "—"
         ov_html = f'<span class="ko">{esc(ov)}</span>' if ov == "K.O." else esc(ov)
         url = model_repo(r["profile"], r["is_saas"])
-        hf = f' <a href="{esc(url)}" title="Repo/Anbieter">↗</a>' if url else ""
+        hf = f' <a href="{esc(url)}" title="Repo/Anbieter" target="_blank" rel="noopener">↗</a>' if url else ""
         link = f'<a href="{LLM_URL}m/{esc(r["stem"])}.html">{esc(r["model"])}</a>{hf}'
         cells = [link, f'{ov_html} {esc(r["pass_rate"])}%', str(r["ko"] or 0)]
         for c in cols:
