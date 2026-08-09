@@ -174,6 +174,80 @@ def load_llm_runs() -> dict:
     return {"local": local, "saas": saas}
 
 
+def load_roster() -> list[dict]:
+    """Kohorten-Plan aus southbyte-vllm/testplan/config/testplan.yaml (stdlib-Regex,
+    kein pyyaml). Roster = active ODER explizit N/A. (name, profile, active, na)."""
+    cfg = REPORTS_DIR.parent / "config" / "testplan.yaml"
+    try:
+        txt = cfg.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    out = []
+    for b in re.split(r"\n\s*-\s+name:\s*", txt)[1:]:
+        name = b.splitlines()[0].strip().strip("\"'")
+        mp = re.search(r'\n\s*profile:\s*"?([^"\n]+)"?', b)
+        if not mp:
+            continue
+        profile = mp.group(1).strip().strip("\"'")
+        ma = re.search(r"\n\s*active:\s*(true|false)", b)
+        active = (ma.group(1) == "true") if ma else True
+        mn = re.search(r'\n\s*notes:\s*"?(.*)', b)
+        note = mn.group(1) if mn else ""
+        na = (not active) and bool(re.search(r"\bN/?A\b", name + " " + note))
+        out.append({"name": name, "profile": profile, "active": active, "na": na})
+    return out
+
+
+def _scan_local_reports(run_dir) -> dict:
+    """ALLE lokalen Reports eines Laufs (auch fehlerhafte) → {name: info} mit
+    Validitätsflag — Basis für die Roster-Statusspalte."""
+    out = {}
+    if not run_dir:
+        return out
+    for j in sorted(Path(run_dir).glob("*.json")):
+        if re.search(r"dashboard|index|summary", j.name, re.I):
+            continue
+        try:
+            d = json.loads(j.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        meta, summ, pbs = d.get("meta", {}), d.get("summary", {}), d.get("playbooks", {})
+        if meta.get("source") == "saas_proxy":
+            continue
+        total = err = 0
+        for k, v in pbs.items():
+            if k in EXCLUDE_PLAYBOOKS or not isinstance(v, dict):
+                continue
+            for res in v.get("results", []):
+                total += 1
+                if res.get("verdict") == "error":
+                    err += 1
+        rate = (err / total) if total else 1.0
+        name = str(meta.get("model") or j.stem).rsplit("/", 1)[-1]
+        pr = {k: v.get("pass_rate") for k, v in pbs.items()
+              if k not in EXCLUDE_PLAYBOOKS and isinstance(v, dict)}
+        out[name] = {"stem": j.stem, "err_rate": rate, "valid": total > 0 and rate <= 0.3,
+                     "pass_rate": summ.get("pass_rate"), "overall": summ.get("overall"),
+                     "ko": summ.get("knockouts", 0), "pb": pr, "perf": _perf(pbs),
+                     "profile": meta.get("profile", ""), "total": total}
+    return out
+
+
+def _running_profile() -> str:
+    """Profil-Dir des aktuell servierten vLLM-Containers (Status „läuft"), best effort."""
+    try:
+        import subprocess
+        out = subprocess.run(["docker", "ps", "--format", "{{.Names}}"],
+                             capture_output=True, text=True, timeout=5).stdout
+    except Exception:
+        return ""
+    for ln in out.splitlines():
+        ln = ln.strip()
+        if ln.startswith("vllm-") and "--" in ln:
+            return ln[len("vllm-"):]
+    return ""
+
+
 # ── Render-Helfer ────────────────────────────────────────────────────────────
 def esc(x) -> str:
     return html.escape(str(x))
@@ -268,6 +342,105 @@ def llm_chapter(data: dict | None, cid: str, title: str, lead: str, card_title: 
     return sec, c
 
 
+_STATUS_RANK = {"valid": 0, "running": 1, "degraded": 2, "pending": 3, "na": 4}
+_STATUS_BADGE = {"valid": "✅ gültig", "running": "🔄 läuft", "degraded": "⚠ degraded",
+                 "pending": "⏳ ausstehend", "na": "⛔ N/A"}
+
+
+def llm_local_chapter(local, roster, reports, running_prof) -> tuple[str, str]:
+    """Volles Kohorten-Roster der lokalen Modelle mit Statusspalte (gültig/läuft/
+    degraded/ausstehend/N/A) — Spiegel der southbyte-vllm-Seite. Gültige Zeilen
+    verlinken auf die Detailseite dort."""
+    cols = [c for c in PLAYBOOK_LABELS if c != "06_performance"]
+    header = (["Modell", "Status", "Gesamt", "K.O."] + [PLAYBOOK_LABELS[c] for c in cols]
+              + ["Tok/s", "TTFT", "Lizenz"])
+    valid_by_name = {r["model"]: r for r in (local["rows"] if local else [])}
+    entries, seen = [], set()
+    for m in roster:
+        name = m["name"]
+        if not m["active"] and not m["na"] and name not in reports:
+            continue
+        seen.add(name); rep = reports.get(name)
+        if name in valid_by_name:
+            status = "valid"
+        elif rep and rep["total"] and not rep["valid"]:
+            status = "degraded"
+        elif m["na"]:
+            status = "na"
+        elif running_prof and m["profile"] and m["profile"] == running_prof:
+            status = "running"
+        else:
+            status = "pending"
+        entries.append((status, name, m, rep))
+    for name, rep in reports.items():
+        if name in seen:
+            continue
+        entries.append(("valid" if rep["valid"] else "degraded", name,
+                        {"name": name, "profile": rep["profile"], "na": False}, rep))
+
+    def sk(e):
+        status, name, _m, _r = e
+        pr = float(valid_by_name[name]["pass_rate"] or 0) if status == "valid" and name in valid_by_name else 0.0
+        return (_STATUS_RANK[status], -pr, name.lower())
+    entries.sort(key=sk)
+
+    dash = ["—"] * (len(cols) + 2)
+    rows, n_valid = [], 0
+    for status, name, m, rep in entries:
+        badge = f'<span class="badge {status}">{_STATUS_BADGE[status]}</span>'
+        prof = m.get("profile", "") or (rep or {}).get("profile", "")
+        lic = esc(model_license(prof, False))
+        if status == "valid":
+            n_valid += 1
+            r = valid_by_name[name]
+            ov = r["overall"] or "—"
+            ov_html = f'<span class="ko">{esc(ov)}</span>' if ov == "K.O." else esc(ov)
+            url = model_repo(r["profile"], False)
+            hf = f' <a href="{esc(url)}" title="Repo" target="_blank" rel="noopener">↗</a>' if url else ""
+            link = f'<a href="{LLM_URL}m/{esc(r["stem"])}.html">{esc(name)}</a>{hf}'
+            cells = [link, badge, f'{ov_html} {esc(r["pass_rate"])}%', str(r["ko"] or 0)]
+            for c in cols:
+                v = r["pb"].get(c)
+                cells.append("—" if v is None else f"{round(float(v) * 100)}%")
+            p = r.get("perf") or {}
+            cells.append(f'{p["tok_median"]:.1f}' if p.get("tok_median") is not None else "—")
+            cells.append(f'{p["ttft_p50"]:.0f} ms' if p.get("ttft_p50") is not None else "—")
+            cells.append(lic)
+        elif status == "degraded":
+            cells = [esc(name), badge, f'<span class="ko">{round(rep["err_rate"] * 100)}% Fehler</span>',
+                     str(rep.get("ko") or 0)]
+            for c in cols:
+                v = rep["pb"].get(c)
+                cells.append("—" if v is None else f'<span class="note">{round(float(v) * 100)}%</span>')
+            p = rep.get("perf") or {}
+            cells.append(f'{p["tok_median"]:.1f}' if p.get("tok_median") is not None else "—")
+            cells.append(f'{p["ttft_p50"]:.0f} ms' if p.get("ttft_p50") is not None else "—")
+            cells.append(lic)
+        else:
+            cells = [esc(name), badge, "—", "—"] + dash + [lic]
+        rows.append((status, cells))
+
+    if not rows:
+        return "", card("LLM lokal", "—", "keine Berichte")
+    trs = "".join(f'<tr class="st-{st}">' + "".join(f"<td>{c}</td>" for c in cs) + "</tr>"
+                  for st, cs in rows)
+    th = "".join(f"<th>{esc(h)}</th>" for h in header)
+    tbl = f"<table><thead><tr>{th}</tr></thead><tbody>{trs}</tbody></table>"
+    counts = {}
+    for st, _cs in rows:
+        counts[st] = counts.get(st, 0) + 1
+    legend = " · ".join(f'{_STATUS_BADGE[s]} {counts[s]}' for s in _STATUS_RANK if counts.get(s))
+    run = esc(local["run"]) if local else "—"
+    sec = (f'<h2 id="llm-local">LLM — Lokale Modelle (DGX Spark)</h2>\n'
+           f'<p>Auf dem GB10 selbst serviert (vLLM), Judge-bewertet. <strong>Vollständiges '
+           f'Kohorten-Roster</strong> — jedes geplante Modell mit Status. Lauf <code>{run}</code> · '
+           f'{len(rows)} Modelle ({legend}). <strong>Gültige Modelle anklicken</strong> → Detail auf '
+           f'<a href="{LLM_URL}">southbyte-vllm</a>. <strong>Sicherheit (04) ausgeschlossen</strong>.</p>\n'
+           f'<div style="overflow-x:auto">{tbl}</div>')
+    c = card("LLM lokal", f'{n_valid}/{len(rows)}', "gültig · volles Roster", "#llm-local")
+    return sec, c
+
+
 def write_summary(run_id, llm_models, guard_models, image_models, tts_models=()) -> dict:
     """Schreibt docs/summary.json — die einzige Quelle für southbyte.de-Chips.
     Bewusst knapp: nur Anzahlen + Datum, keine Modellnamen/Pass-Raten/Security."""
@@ -292,9 +465,11 @@ def build() -> str:
     runs = load_llm_runs()
     g_sec, g_card = guards_section(guards)
     i_sec, i_card = image_section(imgs)
-    local_sec, local_card = llm_chapter(
-        runs["local"], "llm-local", "LLM — Lokale Modelle (DGX Spark)",
-        "Auf dem GB10 selbst serviert (vLLM), Judge-bewertet.", "LLM lokal")
+    roster = load_roster()
+    run_dir = (REPORTS_DIR / runs["local"]["run"]) if runs.get("local") else None
+    reports = _scan_local_reports(run_dir)
+    running_prof = _running_profile()
+    local_sec, local_card = llm_local_chapter(runs["local"], roster, reports, running_prof)
     saas_sec, saas_card = llm_chapter(
         runs["saas"], "llm-saas", "LLM — SaaS-Referenzkohorte",
         "Frontier-Modelle über <b>LiteLLM</b> als Referenzrahmen — ein Endpoint für Cloud- und "
@@ -343,6 +518,12 @@ def build() -> str:
  code{{font-family:var(--mono);color:var(--green);background:var(--bg-card);padding:.05em .35em;border-radius:4px}}
  a{{color:var(--green)}} a:hover{{color:var(--green-dim)}} strong{{color:var(--text)}}
  .ko{{color:var(--ko);font-weight:600}} .empty,.note{{color:var(--text-muted);font-size:.9rem}}
+ .badge{{font-family:var(--mono);font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;
+   padding:.1em .5em;border-radius:4px;border:1px solid var(--border-hi);white-space:nowrap}}
+ .badge.valid{{color:var(--green)}} .badge.running{{color:var(--amber)}}
+ .badge.degraded{{color:#F59E0B;border-color:#7A4A0A}} .badge.pending{{color:var(--text-muted)}}
+ .badge.na{{color:var(--text-dim)}}
+ tr.st-degraded td:first-child,tr.st-pending td:first-child,tr.st-na td:first-child{{color:var(--text-muted)}}
  footer{{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--border);color:var(--text-muted);font-size:.82rem}}
  footer .wm{{font-family:var(--mono);font-weight:700;letter-spacing:1px;color:var(--text)}}
  footer .wm .dot{{color:var(--green)}}
