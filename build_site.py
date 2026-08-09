@@ -102,6 +102,26 @@ def load_image() -> list[dict]:
     return list(runs.values())
 
 
+def _perf(pbs: dict) -> dict | None:
+    """TTFT + Tok/s aus 06_performance/perf_benchmark (response auf 500 Zeichen
+    gekürzt → regex-tolerant; Kernwerte liegen im erhaltenen Präfix)."""
+    pb = pbs.get("06_performance")
+    if not isinstance(pb, dict):
+        return None
+    r = next((x for x in pb.get("results", []) if x.get("test_id") == "perf_benchmark"), None)
+    if not r:
+        return None
+    s = r.get("response", "") or ""
+
+    def numv(key):
+        m = re.search(rf'"{key}"\s*:\s*([\d.]+)', s)
+        return float(m.group(1)) if m else None
+
+    p = {"ttft_p50": numv("ttft_p50_ms"), "tok_median": numv("throughput_median_tok_s"),
+         "tok_mean": numv("throughput_mean_tok_s")}
+    return p if (p["tok_median"] is not None or p["ttft_p50"] is not None) else None
+
+
 def _load_run_rows(files: list[Path]) -> tuple[list[dict], int]:
     """Kuratierte Kennzahlen-Zeilen eines Laufs + Anzahl SaaS-servierter Modelle.
     Abgebrochene Läufe (ERROR-Rate > 30 %, z.B. Budget-Cap) werden übersprungen."""
@@ -128,7 +148,7 @@ def _load_run_rows(files: list[Path]) -> tuple[list[dict], int]:
         pr = {k: v.get("pass_rate") for k, v in pbs.items()
               if k not in EXCLUDE_PLAYBOOKS and isinstance(v, dict)}
         rows.append({"model": name, "overall": summ.get("overall"), "pass_rate": summ.get("pass_rate"),
-                     "ko": summ.get("knockouts", 0), "pb": pr, "stem": j.stem,
+                     "ko": summ.get("knockouts", 0), "pb": pr, "stem": j.stem, "perf": _perf(pbs),
                      "profile": meta.get("profile", ""), "is_saas": meta.get("source") == "saas_proxy"})
     rows.sort(key=lambda r: float(r["pass_rate"] or 0), reverse=True)
     return rows, saas
@@ -219,8 +239,9 @@ def llm_chapter(data: dict | None, cid: str, title: str, lead: str, card_title: 
     """Ein LLM-Kapitel (lokal oder SaaS). Modellname → Detail auf southbyte-vllm."""
     if not data or not data["rows"]:
         return "", card(card_title, "—", "keine Berichte")
-    cols = list(PLAYBOOK_LABELS)
-    header = ["Modell", "Gesamt", "K.O."] + [PLAYBOOK_LABELS[c] for c in cols] + ["Lizenz"]
+    cols = [c for c in PLAYBOOK_LABELS if c != "06_performance"]
+    header = (["Modell", "Gesamt", "K.O."] + [PLAYBOOK_LABELS[c] for c in cols]
+              + ["Tok/s", "TTFT", "Lizenz"])
     rows = []
     for r in data["rows"]:
         ov = r["overall"] or "—"
@@ -232,6 +253,9 @@ def llm_chapter(data: dict | None, cid: str, title: str, lead: str, card_title: 
         for c in cols:
             v = r["pb"].get(c)
             cells.append("—" if v is None else f"{round(float(v) * 100)}%")
+        p = r.get("perf") or {}
+        cells.append(f'{p["tok_median"]:.1f}' if p.get("tok_median") is not None else "—")
+        cells.append(f'{p["ttft_p50"]:.0f} ms' if p.get("ttft_p50") is not None else "—")
         cells.append(esc(model_license(r["profile"], r["is_saas"])))
         rows.append(cells)
     best = data["rows"][0]
