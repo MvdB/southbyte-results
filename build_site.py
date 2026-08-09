@@ -297,8 +297,9 @@ def build() -> str:
         "Auf dem GB10 selbst serviert (vLLM), Judge-bewertet.", "LLM lokal")
     saas_sec, saas_card = llm_chapter(
         runs["saas"], "llm-saas", "LLM — SaaS-Referenzkohorte",
-        "Frontier-Modelle über eine OpenAI-kompatible API als Referenzrahmen, "
-        "gleicher Testsatz, Judge <code>claude-sonnet-5</code>.", "LLM SaaS")
+        "Frontier-Modelle über <b>LiteLLM</b> als Referenzrahmen — ein Endpoint für Cloud- und "
+        "lokale Modelle, von SouthByte empfohlen. Gleicher Testsatz, Judge <code>claude-sonnet-5</code>. "
+        "Tok/s &amp; TTFT messen hier Cloud+Netz (nicht lokale Hardware).", "LLM SaaS")
 
     tts_card = card("TTS", "→", "Vergleich anhören", TTS_URL)
     cards = "\n".join([local_card, saas_card, g_card, tts_card, i_card])
