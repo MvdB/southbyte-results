@@ -31,6 +31,9 @@ LLM_URL = "https://mvdb.github.io/southbyte-vllm/"   # LLM + Guard Detail-Seiten
 
 # Sicherheit (04) wird bewusst NICHT publiziert — Jailbreak/PII-Rohausgaben bleiben lokal.
 EXCLUDE_PLAYBOOKS = {"04_security"}
+# Nie publizieren (gehört in andere Collection) — laufender Orchestrator testet es
+# noch (Snapshot beim Start), Report wird hier gefiltert.
+_EXCLUDE_MODELS = {"Qwen-AgentWorld-35B-A3B"}
 PLAYBOOK_LABELS = {
     "01_quality": "Qualität", "02_german_language": "Deutsch", "03_bias": "Bias",
     "05_code": "Code", "06_performance": "Performance",
@@ -142,9 +145,11 @@ def _load_run_rows(files: list[Path]) -> tuple[list[dict], int]:
                     err += 1
         if total == 0 or err / total > 0.3:
             continue
+        name = str(meta.get("model") or j.stem).rsplit("/", 1)[-1]
+        if name in _EXCLUDE_MODELS:
+            continue
         if meta.get("source") == "saas_proxy":
             saas += 1
-        name = str(meta.get("model") or j.stem).rsplit("/", 1)[-1]
         pr = {k: v.get("pass_rate") for k, v in pbs.items()
               if k not in EXCLUDE_PLAYBOOKS and isinstance(v, dict)}
         rows.append({"model": name, "overall": summ.get("overall"), "pass_rate": summ.get("pass_rate"),
@@ -224,6 +229,8 @@ def _scan_local_reports(run_dir) -> dict:
                     err += 1
         rate = (err / total) if total else 1.0
         name = str(meta.get("model") or j.stem).rsplit("/", 1)[-1]
+        if name in _EXCLUDE_MODELS:
+            continue
         pr = {k: v.get("pass_rate") for k, v in pbs.items()
               if k not in EXCLUDE_PLAYBOOKS and isinstance(v, dict)}
         out[name] = {"stem": j.stem, "err_rate": rate, "valid": total > 0 and rate <= 0.3,
