@@ -348,7 +348,10 @@ def main() -> int:
     runs = load_llm_runs()
     local = runs["local"] or {"run": None, "rows": []}
     saas = runs["saas"] or {"run": None, "rows": []}
-    newest = saas["run"] or local["run"] or "unknown"
+    # Neuestes Run-Datum (nicht SaaS-first): lokal ist i.d.R. der aktuellste Lauf.
+    cands = [r["run"] for r in (local, saas) if r.get("run")]
+    newest = max(cands, key=lambda s: s.split("_")[0]) if cands else "unknown"
+    # llm-Count = SaaS + lokal zusammen.
     write_summary(newest, local["rows"] + saas["rows"], load_guards(), load_image())
     return 0
 
