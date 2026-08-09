@@ -139,10 +139,10 @@ def load_llm_runs() -> dict:
     local = saas = None
     for d in sorted(REPORTS_DIR.glob("2026-*"), reverse=True):
         models = [j for j in d.glob("*.json") if not re.search(r"dashboard|index", j.name, re.I)]
-        if len(models) < 5:
+        if len(models) < 3:
             continue
         rows, nsaas = _load_run_rows(sorted(models))
-        if len(rows) < 5:
+        if len(rows) < 3:
             continue
         kind = "saas" if nsaas * 2 >= len(rows) else "local"
         if kind == "saas" and saas is None:
