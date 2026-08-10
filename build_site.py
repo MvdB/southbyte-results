@@ -270,6 +270,49 @@ def card(title: str, big: str, sub: str, href: str | None = None) -> str:
     return f'<div class="card"><h3>{esc(title)}</h3>{body}</div>'
 
 
+# Klick-Sortierung für alle Tabellen (vanilla JS, keine Abhängigkeiten).
+SORT_CSS = (
+    "\n table th{cursor:pointer;user-select:none}"
+    "\n table th::after{content:' ';opacity:.35;font-size:.75em}"
+    "\n table th[aria-sort=ascending]::after{content:' \\25B2';opacity:.9}"
+    "\n table th[aria-sort=descending]::after{content:' \\25BC';opacity:.9}"
+)
+SORT_SCRIPT = """
+<script>
+(function(){
+  function val(td){var s=td.getAttribute('data-sort');if(s===null){var el=td.querySelector('[data-sort]');if(el)s=el.getAttribute('data-sort');}return (s!==null?s:(td.textContent||'')).trim();}
+  function num(t){var m=t.replace(/\\u00a0/g,'').replace(/\\s+/g,'').replace(',','.').match(/-?\\d+(?:\\.\\d+)?/);return m?parseFloat(m[0]):null;}
+  function isEmpty(t){return t===''||t==='—'||t==='-';}
+  function sortTable(table,idx,asc){
+    var tb=table.tBodies[0]; if(!tb) return;
+    var rows=Array.prototype.slice.call(tb.rows);
+    var allNum=rows.every(function(r){var c=r.cells[idx];if(!c)return true;var v=val(c);return isEmpty(v)||num(v)!==null;});
+    rows.sort(function(a,b){
+      var av=a.cells[idx]?val(a.cells[idx]):'',bv=b.cells[idx]?val(b.cells[idx]):'';
+      var e1=isEmpty(av),e2=isEmpty(bv);
+      if(e1&&e2)return 0; if(e1)return 1; if(e2)return -1;
+      var r=allNum?((num(av)||0)-(num(bv)||0)):av.localeCompare(bv,'de',{numeric:true});
+      return asc?r:-r;
+    });
+    rows.forEach(function(r){tb.appendChild(r);});
+  }
+  document.querySelectorAll('table').forEach(function(table){
+    var head=table.tHead; if(!head||!head.rows.length) return;
+    Array.prototype.forEach.call(head.rows[0].cells,function(th,idx){
+      th.setAttribute('title','Klick: sortieren');
+      th.addEventListener('click',function(){
+        var asc=th.getAttribute('aria-sort')!=='ascending';
+        Array.prototype.forEach.call(head.rows[0].cells,function(o){o.removeAttribute('aria-sort');});
+        th.setAttribute('aria-sort',asc?'ascending':'descending');
+        sortTable(table,idx,asc);
+      });
+    });
+  });
+})();
+</script>
+"""
+
+
 def table(headers: list[str], rows: list[list[str]]) -> str:
     if not rows:
         return '<p class="empty">Noch keine Daten.</p>'
@@ -394,7 +437,7 @@ def llm_local_chapter(local, roster, reports, running_prof) -> tuple[str, str]:
     dash = ["—"] * (len(cols) + 2)
     rows, n_valid = [], 0
     for status, name, m, rep in entries:
-        badge = f'<span class="badge {status}">{_STATUS_BADGE[status]}</span>'
+        badge = f'<span class="badge {status}" data-sort="{_STATUS_RANK[status]}">{_STATUS_BADGE[status]}</span>'
         prof = m.get("profile", "") or (rep or {}).get("profile", "")
         lic = esc(model_license(prof, False))
         if status == "valid":
@@ -533,7 +576,7 @@ def build() -> str:
  tr.st-degraded td:first-child,tr.st-pending td:first-child,tr.st-na td:first-child{{color:var(--text-muted)}}
  footer{{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--border);color:var(--text-muted);font-size:.82rem}}
  footer .wm{{font-family:var(--mono);font-weight:700;letter-spacing:1px;color:var(--text)}}
- footer .wm .dot{{color:var(--green)}}
+ footer .wm .dot{{color:var(--green)}}{SORT_CSS}
 </style></head><body><div class="grid-bg"></div><div class="wrap">
 <header><div class="wordmark">SOUTH<span class="dot">.</span>BYTE</div>
 <div class="tagline">AI Governance &amp; IT-Beratung</div></header>
@@ -549,7 +592,7 @@ Kennzahlen hier; die Fall-für-Fall-Details liegen im jeweiligen Modalitäts-Rep
 <footer><span class="wm">SOUTH<span class="dot">.</span>BYTE</span> — Michael van den Berg ·
 Teil der <a href="https://github.com/MvdB?tab=repositories&amp;q=southbyte">southbyte</a>-Familie ·
 <a href="https://southbyte.de">southbyte.de</a></footer>
-</div></body></html>
+{SORT_SCRIPT}</div></body></html>
 """
 
 
