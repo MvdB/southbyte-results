@@ -23,6 +23,7 @@ HOME = Path.home()
 GUARDS_DIR = Path(os.environ.get("GUARDS_DIR", HOME / "southbyte/southbyte-vllm/testplan/reports/guardrails"))
 IMAGE_RESULTS = Path(os.environ.get("IMAGE_RESULTS", HOME / "southbyte/southbyte-image/results"))
 IMAGE_CONFIG = Path(os.environ.get("IMAGE_CONFIG", HOME / "southbyte/southbyte-image/config/image_models.yaml"))
+TTS_RESULTS = Path(os.environ.get("TTS_RESULTS", HOME / "southbyte/southbyte-tts/results"))
 REPORTS_DIR = Path(os.environ.get("REPORTS_DIR", HOME / "southbyte/southbyte-vllm/testplan/reports"))
 DOCS = Path(__file__).resolve().parent / "docs"
 
@@ -124,6 +125,21 @@ def load_image() -> list[dict]:
             continue
         runs[d.get("model", s.parent.name)] = d
     return list(runs.values())
+
+
+def load_tts() -> list[dict]:
+    """WER je TTS-Stimme aus den Rescore-Judge-Läufen (Whisper=judge1, Voxtral=judge2)."""
+    out = []
+    for j in sorted(TTS_RESULTS.glob("*_suite_*/rescore_judge2.json")):
+        try:
+            d = json.loads(j.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        run = str(d.get("run") or j.parent.name)
+        voice = re.sub(r"^\d{4}-\d{2}-\d{2}_suite_", "", run)  # → 'chatterbox-de-f1'
+        out.append({"voice": voice, "wer1": d.get("wer_judge1_mean"), "wer2": d.get("wer_judge2_mean")})
+    out.sort(key=lambda r: r["wer2"] if r["wer2"] is not None else 9)
+    return out
 
 
 def _perf(pbs: dict) -> dict | None:
@@ -363,7 +379,7 @@ def guards_section(guards: list[dict]) -> tuple[str, str]:
     sec = (f'<h2 id="guards">Guardrails (Playbook 08)</h2>\n'
            f'<p class="note">Guard-Name anklicken → Fall für Fall (Wahrheit vs. Vorhersage) auf '
            f'<a href="{LLM_URL}">southbyte-vllm</a>. Kein Judge — das Label ist die Wahrheit.</p>\n'
-           f'{table(["Guard"] + keys + ["K.O."], rows)}')
+           f'<div style="overflow-x:auto">{table(["Guard"] + keys + ["K.O."], rows)}</div>')
     c = card("Guards", f'{(best["metrics"].get("f1", 0) or 0):.3f}', f'bestes F1 · {best["label"]}', "#guards")
     return sec, c
 
@@ -383,11 +399,24 @@ def image_section(imgs: list[dict]) -> tuple[str, str]:
              num(d.get("text_rendering_cer_mean")), num(d.get("text_rendering_exact_rate")),
              num(d.get("adherence_score_mean"))] for d in imgs]
     sec = ('<h2 id="image">Text-to-Image</h2>\n'
-           + table(["Modell", "Bilder", "Ø s/Bild", "Textrender CER", "Textrender exakt", "Prompt-Treue"], rows)
            + f'<p class="note">Spalte klicken zum Sortieren · Modell → Model-Card · '
-           f'Vollständige Galerie: <a href="{IMAGE_URL}">{IMAGE_URL}</a></p>')
+           f'Vollständige Galerie: <a href="{IMAGE_URL}">{IMAGE_URL}</a></p>\n'
+           + f'<div style="overflow-x:auto">{table(["Modell", "Bilder", "Ø s/Bild", "Textrender CER", "Textrender exakt", "Prompt-Treue"], rows)}</div>')
     fastest = min(imgs, key=lambda d: d.get("gen_seconds_mean") or 9e9)
     c = card("Image", f'{len(imgs)}', f'Modelle · schnellstes {fastest.get("model")}', IMAGE_URL)
+    return sec, c
+
+
+def tts_section(tts: list[dict]) -> tuple[str, str]:
+    if not tts:
+        return "", card("TTS", "→", "Vergleich anhören", TTS_URL)
+    rows = [[esc(t["voice"]), num(t.get("wer1")), num(t.get("wer2"))] for t in tts]
+    sec = ('<h2 id="tts">TTS — Deutsche Stimmen</h2>\n'
+           + f'<p class="note">WER je Stimme (niedriger = besser), per ASR-Rückschrift gemessen '
+           f'(Whisper-large-v3 &amp; Voxtral-mini). Anhörbare Beispiele: <a href="{TTS_URL}">{TTS_URL}</a></p>\n'
+           + f'<div style="overflow-x:auto">{table(["Stimme", "WER (Whisper)", "WER (Voxtral)"], rows)}</div>')
+    best = tts[0]  # nach WER (Voxtral) aufsteigend sortiert
+    c = card("TTS", f'{len(tts)}', f'Stimmen · beste {best["voice"]}', "#tts")
     return sec, c
 
 
@@ -557,10 +586,9 @@ def build() -> str:
         "lokale Modelle, von SouthByte empfohlen. Gleicher Testsatz, Judge <code>claude-sonnet-5</code>. "
         "Tok/s &amp; TTFT messen hier Cloud+Netz (nicht lokale Hardware).", "LLM SaaS")
 
-    tts_card = card("TTS", "→", "Vergleich anhören", TTS_URL)
+    tts = load_tts()
+    tts_sec, tts_card = tts_section(tts)
     cards = "\n".join([local_card, saas_card, g_card, tts_card, i_card])
-    tts_sec = (f'<h2 id="tts">TTS</h2>\n<p>Deutscher TTS-Vergleich mit anhörbaren Beispielen: '
-               f'<a href="{TTS_URL}">{TTS_URL}</a></p>')
 
     # SouthByte Web-CI (southbyte-brand skill): Dark-Theme, Matrix-Grid, Wortmarke SOUTH.BYTE.
     return f"""<!doctype html>
@@ -643,7 +671,7 @@ def main() -> int:
     cands = [r["run"] for r in (local, saas) if r.get("run")]
     newest = max(cands, key=lambda s: s.split("_")[0]) if cands else "unknown"
     # llm-Count = SaaS + lokal zusammen.
-    write_summary(newest, local["rows"] + saas["rows"], load_guards(), load_image())
+    write_summary(newest, local["rows"] + saas["rows"], load_guards(), load_image(), load_tts())
     return 0
 
 
