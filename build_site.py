@@ -22,6 +22,7 @@ from pathlib import Path
 HOME = Path.home()
 GUARDS_DIR = Path(os.environ.get("GUARDS_DIR", HOME / "southbyte/southbyte-vllm/testplan/reports/guardrails"))
 IMAGE_RESULTS = Path(os.environ.get("IMAGE_RESULTS", HOME / "southbyte/southbyte-image/results"))
+IMAGE_CONFIG = Path(os.environ.get("IMAGE_CONFIG", HOME / "southbyte/southbyte-image/config/image_models.yaml"))
 REPORTS_DIR = Path(os.environ.get("REPORTS_DIR", HOME / "southbyte/southbyte-vllm/testplan/reports"))
 DOCS = Path(__file__).resolve().parent / "docs"
 
@@ -73,6 +74,26 @@ def model_repo(profile: str, is_saas: bool) -> str:
                 return url
         return ""
     return "https://huggingface.co/" + profile.replace("--", "/", 1) if "--" in profile else ""
+
+
+def _image_dirs() -> dict:
+    """name→hf-dir aus southbyte-image/config/image_models.yaml (stdlib-Regex)."""
+    out: dict = {}
+    try:
+        lines = IMAGE_CONFIG.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return out
+    name = None
+    for ln in lines:
+        g = re.match(r'\s*-\s*name:\s*"?([^"#\n]+?)"?\s*$', ln)
+        if g:
+            name = g.group(1).strip()
+            continue
+        d = re.match(r'\s*dir:\s*"?([^"#\s]+)"?', ln)
+        if d and name:
+            out[name] = d.group(1)
+            name = None
+    return out
 
 
 # ── Feeds laden ──────────────────────────────────────────────────────────────
@@ -350,12 +371,21 @@ def guards_section(guards: list[dict]) -> tuple[str, str]:
 def image_section(imgs: list[dict]) -> tuple[str, str]:
     if not imgs:
         return "", card("Image", "—", "kein Feldlauf")
-    rows = [[esc(d.get("model")), num(d.get("generated")), num(d.get("gen_seconds_mean")),
+    dirs = _image_dirs()
+
+    def _mlink(name) -> str:
+        name = name or ""
+        hf = dirs.get(name)
+        return (f'<a href="https://huggingface.co/{hf.replace("--", "/", 1)}" '
+                f'target="_blank" rel="noopener">{esc(name)}</a>') if hf else esc(name)
+
+    rows = [[_mlink(d.get("model")), num(d.get("generated")), num(d.get("gen_seconds_mean")),
              num(d.get("text_rendering_cer_mean")), num(d.get("text_rendering_exact_rate")),
              num(d.get("adherence_score_mean"))] for d in imgs]
     sec = ('<h2 id="image">Text-to-Image</h2>\n'
            + table(["Modell", "Bilder", "Ø s/Bild", "Textrender CER", "Textrender exakt", "Prompt-Treue"], rows)
-           + f'<p class="note">Vollständige Galerie: <a href="{IMAGE_URL}">{IMAGE_URL}</a></p>')
+           + f'<p class="note">Spalte klicken zum Sortieren · Modell → Model-Card · '
+           f'Vollständige Galerie: <a href="{IMAGE_URL}">{IMAGE_URL}</a></p>')
     fastest = min(imgs, key=lambda d: d.get("gen_seconds_mean") or 9e9)
     c = card("Image", f'{len(imgs)}', f'Modelle · schnellstes {fastest.get("model")}', IMAGE_URL)
     return sec, c
