@@ -4,7 +4,7 @@
   "counts": {
     "llm": 42,
     "guard": 5,
-    "image": 4,
+    "image": 5,
     "tts": 0
   },
   "url": "https://mvdb.github.io/southbyte-results/"
