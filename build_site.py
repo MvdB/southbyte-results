@@ -137,7 +137,23 @@ def load_tts() -> list[dict]:
             continue
         run = str(d.get("run") or j.parent.name)
         voice = re.sub(r"^\d{4}-\d{2}-\d{2}_suite_", "", run)  # → 'chatterbox-de-f1'
-        out.append({"voice": voice, "wer1": d.get("wer_judge1_mean"), "wer2": d.get("wer_judge2_mean")})
+        hf = ""  # Stimme → zugrundeliegendes HF-Engine-Repo (aus summary.json, nicht raten)
+        try:
+            sm = json.loads((j.parent / "summary.json").read_text(encoding="utf-8"))
+            raw = str(sm.get("tts_model") or "").strip()
+            repo = ""
+            for seg in raw.split("/"):                 # 'owner--model'-Segment im Pfad finden
+                if "--" in seg:
+                    repo = seg.replace("--", "/", 1)
+                    break
+            if not repo and re.match(r"^[\w.-]+/[\w.-]+$", raw):  # direkte owner/model-Form (z.B. Voxtral)
+                repo = raw
+            if repo:
+                hf = "https://huggingface.co/" + repo
+        except (OSError, json.JSONDecodeError):
+            pass
+        out.append({"voice": voice, "hf": hf,
+                    "wer1": d.get("wer_judge1_mean"), "wer2": d.get("wer_judge2_mean")})
     out.sort(key=lambda r: r["wer2"] if r["wer2"] is not None else 9)
     return out
 
@@ -315,6 +331,7 @@ SORT_CSS = (
     "\n table th::after{content:' ';opacity:.35;font-size:.75em}"
     "\n table th[aria-sort=ascending]::after{content:' \\25B2';opacity:.9}"
     "\n table th[aria-sort=descending]::after{content:' \\25BC';opacity:.9}"
+    "\n table td.best{font-weight:700;color:var(--green);background:var(--bg-raised)}"
 )
 SORT_SCRIPT = """
 <script>
@@ -347,15 +364,42 @@ SORT_SCRIPT = """
       });
     });
   });
+  // Bestwert je Spalte grün markieren (data-best=min|max am th); überlebt Sortierung.
+  document.querySelectorAll('table').forEach(function(table){
+    var head=table.tHead, tb=table.tBodies[0]; if(!head||!head.rows.length||!tb) return;
+    Array.prototype.forEach.call(head.rows[0].cells,function(th,idx){
+      var dir=th.getAttribute('data-best'); if(dir!=='min'&&dir!=='max') return;
+      var best=null;
+      Array.prototype.forEach.call(tb.rows,function(r){var c=r.cells[idx];if(!c)return;var v=num(val(c));if(v===null)return;if(best===null||(dir==='min'?v<best:v>best))best=v;});
+      if(best===null)return;
+      Array.prototype.forEach.call(tb.rows,function(r){var c=r.cells[idx];if(!c)return;var v=num(val(c));if(v!==null&&v===best)c.classList.add('best');});
+    });
+  });
 })();
 </script>
 """
+
+# Bestwert-Richtung je Spaltentitel (grün): min = niedriger besser, max = höher besser.
+_BEST_DIR = {
+    "Gesamt": "max", "Tok/s": "max", "F1": "max", "Recall": "max",
+    "Qualität": "max", "Deutsch": "max", "Bias": "max", "Code": "max", "Performance": "max",
+    "HSF": "max", "Guardrails": "max", "Sicherheit": "max",
+    "Textrender exakt": "max", "Prompt-Treue": "max",
+    "TTFT": "min", "FPR": "min", "Trap-FPR": "min",
+    "WER (Whisper)": "min", "WER (Voxtral)": "min",
+    "Ø s/Bild": "min", "Textrender CER": "min",
+}
+
+
+def best_attr(h) -> str:
+    d = _BEST_DIR.get(str(h).strip())
+    return f' data-best="{d}"' if d else ""
 
 
 def table(headers: list[str], rows: list[list[str]]) -> str:
     if not rows:
         return '<p class="empty">Noch keine Daten.</p>'
-    th = "".join(f"<th>{esc(h)}</th>" for h in headers)
+    th = "".join(f"<th{best_attr(h)}>{esc(h)}</th>" for h in headers)
     trs = "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in rows)
     return f"<table><thead><tr>{th}</tr></thead><tbody>{trs}</tbody></table>"
 
@@ -410,10 +454,14 @@ def image_section(imgs: list[dict]) -> tuple[str, str]:
 def tts_section(tts: list[dict]) -> tuple[str, str]:
     if not tts:
         return "", card("TTS", "→", "Vergleich anhören", TTS_URL)
-    rows = [[esc(t["voice"]), num(t.get("wer1")), num(t.get("wer2"))] for t in tts]
+    def _vlink(t):
+        nm = esc(t["voice"])
+        return (f'<a href="{t["hf"]}" target="_blank" rel="noopener">{nm}</a>') if t.get("hf") else nm
+    rows = [[_vlink(t), num(t.get("wer1")), num(t.get("wer2"))] for t in tts]
     sec = ('<h2 id="tts">TTS — Deutsche Stimmen</h2>\n'
            + f'<p class="note">WER je Stimme (niedriger = besser), per ASR-Rückschrift gemessen '
-           f'(Whisper-large-v3 &amp; Voxtral-mini). Anhörbare Beispiele: <a href="{TTS_URL}">{TTS_URL}</a></p>\n'
+           f'(Whisper-large-v3 &amp; Voxtral-mini) · Stimme → HF-Engine. Anhörbare Beispiele: '
+           f'<a href="{TTS_URL}">{TTS_URL}</a></p>\n'
            + f'<div style="overflow-x:auto">{table(["Stimme", "WER (Whisper)", "WER (Voxtral)"], rows)}</div>')
     best = tts[0]  # nach WER (Voxtral) aufsteigend sortiert
     c = card("TTS", f'{len(tts)}', f'Stimmen · beste {best["voice"]}', "#tts")
@@ -535,7 +583,7 @@ def llm_local_chapter(local, roster, reports, running_prof) -> tuple[str, str]:
         return "", card("LLM lokal", "—", "keine Berichte")
     trs = "".join(f'<tr class="st-{st}">' + "".join(f"<td>{c}</td>" for c in cs) + "</tr>"
                   for st, cs in rows)
-    th = "".join(f"<th>{esc(h)}</th>" for h in header)
+    th = "".join(f"<th{best_attr(h)}>{esc(h)}</th>" for h in header)
     tbl = f"<table><thead><tr>{th}</tr></thead><tbody>{trs}</tbody></table>"
     counts = {}
     for st, _cs in rows:
