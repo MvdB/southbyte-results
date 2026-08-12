@@ -109,6 +109,14 @@ def model_meta(name: str) -> dict:
     return _MODELS.get(name or "", {})
 
 
+def rel_cell(name: str) -> str:
+    """Release-Zelle mit numerischem Sortier-Key (YYYYMM); sonst liest der
+    Sortierer nur '2026' und ignoriert den Monat."""
+    d = str(model_meta(name).get("release_date", "") or "")
+    m = re.match(r"(\d{4})-(\d{2})", d)
+    return f'<span data-sort="{m.group(1)}{m.group(2)}">{esc(d)}</span>' if m else "—"
+
+
 def _image_dirs() -> dict:
     """name→hf-dir aus southbyte-image/config/image_models.yaml (stdlib-Regex)."""
     out: dict = {}
@@ -456,10 +464,14 @@ def guards_section(guards: list[dict]) -> tuple[str, str]:
             if k not in hide and isinstance(g["metrics"][k], (int, float)) and k not in keys:
                 keys.append(k)
 
+    _GN = {"granite-guardian": "Granite-Guardian-4.1-8B", "gpt-oss-safeguard": "gpt-oss-safeguard-20b",
+           "nemotron-3-5": "Nemotron-3.5-Content-Safety", "nemotron-3": "Nemotron-3-Content-Safety",
+           "shieldstral": "Shieldstral-1.0-3B"}
+
     def glabel(g):
         return (f'<a href="{LLM_URL}g/{esc(g["slug"])}.html">{esc(g["label"])}</a>'
                 if g.get("has_detail") else esc(g["label"]))
-    rows = [[glabel(g)] + [num(g["metrics"].get(k)) for k in keys]
+    rows = [[glabel(g), rel_cell(_GN.get(g["slug"], ""))] + [num(g["metrics"].get(k)) for k in keys]
             + ["✓" if not g["knockouts"] else f'<span class="ko">K.O. {len(g["knockouts"])}</span>']
             for g in guards]
     best = max(guards, key=lambda g: g["metrics"].get("f1", 0) or 0)
@@ -467,7 +479,7 @@ def guards_section(guards: list[dict]) -> tuple[str, str]:
            f'<p class="note">Guard-Name anklicken → Fall für Fall (Wahrheit vs. Vorhersage) auf '
            f'<a href="{LLM_URL}">southbyte-vllm</a>. Kein Judge — das Label ist die Wahrheit.</p>\n'
            f'<div class="gtbl" style="overflow-x:auto">'
-           f'{table(["Guard"] + [_GUARD_KEY_LABEL.get(k, k) for k in keys] + ["K.O."], rows)}</div>')
+           f'{table(["Guard", "Release"] + [_GUARD_KEY_LABEL.get(k, k) for k in keys] + ["K.O."], rows)}</div>')
     c = card("Guards", f'{(best["metrics"].get("f1", 0) or 0):.3f}', f'bestes F1 · {best["label"]}', "#guards")
     return sec, c
 
@@ -484,8 +496,7 @@ def image_section(imgs: list[dict]) -> tuple[str, str]:
                 f'target="_blank" rel="noopener">{esc(name)}</a>') if hf else esc(name)
 
     def _meta(name):
-        m = model_meta(name)
-        return esc(m.get("release_date", "—") or "—"), esc(m.get("license", "—") or "—")
+        return rel_cell(name), esc(model_meta(name).get("license", "—") or "—")
     rows = []
     for d in imgs:
         rel, lic = _meta(d.get("model"))
@@ -509,8 +520,7 @@ def tts_section(tts: list[dict]) -> tuple[str, str]:
         return (f'<a href="{t["hf"]}" target="_blank" rel="noopener">{nm}</a>') if t.get("hf") else nm
     def _tmeta(t):
         repo = (t.get("hf") or "").replace("https://huggingface.co/", "")
-        m = model_meta(repo)
-        return esc(m.get("release_date", "—") or "—"), esc(m.get("license", "—") or "—")
+        return rel_cell(repo), esc(model_meta(repo).get("license", "—") or "—")
     rows = []
     for t in tts:
         rel, lic = _tmeta(t)
@@ -537,9 +547,12 @@ def llm_chapter(data: dict | None, cid: str, title: str, lead: str, card_title: 
         ov = r["overall"] or "—"
         ov_html = f'<span class="ko">{esc(ov)}</span>' if ov == "K.O." else esc(ov)
         url = model_repo(r["profile"], r["is_saas"])
+        if not url:  # SaaS ohne Anbieter-Link → HF-Card aus models.yaml (Kimi/MiniMax/DeepSeek/Qwen/…)
+            hr = model_meta(r["model"]).get("hf_repo")
+            url = ("https://huggingface.co/" + hr) if hr else url
         hf = f' <a href="{esc(url)}" title="Repo/Anbieter" target="_blank" rel="noopener">↗</a>' if url else ""
         link = f'<a href="{LLM_URL}m/{esc(r["stem"])}.html">{esc(r["model"])}</a>{hf}'
-        rel = esc(model_meta(r["model"]).get("release_date", "—") or "—")
+        rel = rel_cell(r["model"])
         cells = [link, rel, f'{ov_html} {esc(r["pass_rate"])}%', str(r["ko"] or 0)]
         for c in cols:
             v = r["pb"].get(c)
@@ -607,7 +620,7 @@ def llm_local_chapter(local, roster, reports, running_prof) -> tuple[str, str]:
         badge = f'<span class="badge {status}" data-sort="{_STATUS_RANK[status]}">{_STATUS_BADGE[status]}</span>'
         prof = m.get("profile", "") or (rep or {}).get("profile", "")
         lic = esc(model_license(prof, False))
-        rel = esc(model_meta(name).get("release_date", "—") or "—")
+        rel = rel_cell(name)
         if status == "valid":
             n_valid += 1
             r = valid_by_name[name]
