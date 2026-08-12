@@ -582,7 +582,7 @@ def llm_local_chapter(local, roster, reports, running_prof) -> tuple[str, str]:
     degraded/ausstehend/N/A) — Spiegel der southbyte-vllm-Seite. Gültige Zeilen
     verlinken auf die Detailseite dort."""
     cols = [c for c in PLAYBOOK_LABELS if c != "06_performance"]
-    header = (["Modell", "Status", "Release", "Gesamt", "K.O."] + [PLAYBOOK_LABELS[c] for c in cols]
+    header = (["Modell", "Release", "Gesamt", "K.O."] + [PLAYBOOK_LABELS[c] for c in cols]
               + ["Tok/s", "TTFT", "Lizenz"])
     valid_by_name = {r["model"]: r for r in (local["rows"] if local else [])}
     entries, seen = [], set()
@@ -629,7 +629,7 @@ def llm_local_chapter(local, roster, reports, running_prof) -> tuple[str, str]:
             url = model_repo(r["profile"], False)
             hf = f' <a href="{esc(url)}" title="Repo" target="_blank" rel="noopener">↗</a>' if url else ""
             link = f'<a href="{LLM_URL}m/{esc(r["stem"])}.html">{esc(name)}</a>{hf}'
-            cells = [link, badge, rel, f'{ov_html} {esc(r["pass_rate"])}%', str(r["ko"] or 0)]
+            cells = [link, rel, f'{ov_html} {esc(r["pass_rate"])}%', str(r["ko"] or 0)]
             for c in cols:
                 v = r["pb"].get(c)
                 cells.append("—" if v is None else f"{round(float(v) * 100)}%")
@@ -638,7 +638,7 @@ def llm_local_chapter(local, roster, reports, running_prof) -> tuple[str, str]:
             cells.append(f'{p["ttft_p50"]:.0f} ms' if p.get("ttft_p50") is not None else "—")
             cells.append(lic)
         elif status == "degraded":
-            cells = [esc(name), badge, rel, f'<span class="ko">{round(rep["err_rate"] * 100)}% Fehler</span>',
+            cells = [esc(name), rel, f'<span class="ko">{round(rep["err_rate"] * 100)}% Fehler</span>',
                      str(rep.get("ko") or 0)]
             for c in cols:
                 v = rep["pb"].get(c)
@@ -648,7 +648,7 @@ def llm_local_chapter(local, roster, reports, running_prof) -> tuple[str, str]:
             cells.append(f'{p["ttft_p50"]:.0f} ms' if p.get("ttft_p50") is not None else "—")
             cells.append(lic)
         else:
-            cells = [esc(name), badge, rel, "—", "—"] + dash + [lic]
+            cells = [esc(name), rel, "—", "—"] + dash + [lic]
         rows.append((status, cells))
 
     if not rows:
