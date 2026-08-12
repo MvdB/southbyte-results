@@ -77,6 +77,38 @@ def model_repo(profile: str, is_saas: bool) -> str:
     return "https://huggingface.co/" + profile.replace("--", "/", 1) if "--" in profile else ""
 
 
+MODELS_YAML = Path(os.environ.get(
+    "MODELS_YAML", HOME / "southbyte/southbyte-vllm/testplan/config/models.yaml"))
+
+
+def _load_models() -> dict:
+    """Zentrale Modell-Metadaten (name → hf_repo/release_date/license) aus models.yaml.
+    Flach über alle Sektionen; Namen sind eindeutig (TTS-Keys = Engine-Repo)."""
+    out: dict = {}
+    try:
+        lines = MODELS_YAML.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return out
+    cur = None
+    for ln in lines:
+        m = re.match(r'\s*-\s*name:\s*"?([^"#\n]+?)"?\s*$', ln)
+        if m:
+            cur = {}
+            out[m.group(1).strip()] = cur
+            continue
+        f = re.match(r'\s+(hf_repo|release_date|license|provider):\s*"?([^"#\n]+?)"?\s*$', ln)
+        if f and cur is not None:
+            cur[f.group(1)] = f.group(2).strip()
+    return out
+
+
+_MODELS = _load_models()
+
+
+def model_meta(name: str) -> dict:
+    return _MODELS.get(name or "", {})
+
+
 def _image_dirs() -> dict:
     """name→hf-dir aus southbyte-image/config/image_models.yaml (stdlib-Regex)."""
     out: dict = {}
@@ -451,13 +483,19 @@ def image_section(imgs: list[dict]) -> tuple[str, str]:
         return (f'<a href="https://huggingface.co/{hf.replace("--", "/", 1)}" '
                 f'target="_blank" rel="noopener">{esc(name)}</a>') if hf else esc(name)
 
-    rows = [[_mlink(d.get("model")), num(d.get("generated")), num(d.get("gen_seconds_mean")),
-             num(d.get("text_rendering_cer_mean")), num(d.get("text_rendering_exact_rate")),
-             num(d.get("adherence_score_mean"))] for d in imgs]
+    def _meta(name):
+        m = model_meta(name)
+        return esc(m.get("release_date", "—") or "—"), esc(m.get("license", "—") or "—")
+    rows = []
+    for d in imgs:
+        rel, lic = _meta(d.get("model"))
+        rows.append([_mlink(d.get("model")), rel, num(d.get("generated")), num(d.get("gen_seconds_mean")),
+                     num(d.get("text_rendering_cer_mean")), num(d.get("text_rendering_exact_rate")),
+                     num(d.get("adherence_score_mean")), lic])
     sec = ('<h2 id="image">Text-to-Image</h2>\n'
            + f'<p class="note">Spalte klicken zum Sortieren · Modell → Model-Card · '
            f'Vollständige Galerie: <a href="{IMAGE_URL}">{IMAGE_URL}</a></p>\n'
-           + f'<div style="overflow-x:auto">{table(["Modell", "Bilder", "Ø s/Bild", "Textrender CER", "Textrender exakt", "Prompt-Treue"], rows)}</div>')
+           + f'<div style="overflow-x:auto">{table(["Modell", "Release", "Bilder", "Ø s/Bild", "Textrender CER", "Textrender exakt", "Prompt-Treue", "Lizenz"], rows)}</div>')
     fastest = min(imgs, key=lambda d: d.get("gen_seconds_mean") or 9e9)
     c = card("Image", f'{len(imgs)}', f'Modelle · schnellstes {fastest.get("model")}', IMAGE_URL)
     return sec, c
@@ -469,12 +507,19 @@ def tts_section(tts: list[dict]) -> tuple[str, str]:
     def _vlink(t):
         nm = esc(t["voice"])
         return (f'<a href="{t["hf"]}" target="_blank" rel="noopener">{nm}</a>') if t.get("hf") else nm
-    rows = [[_vlink(t), num(t.get("wer1")), num(t.get("wer2"))] for t in tts]
+    def _tmeta(t):
+        repo = (t.get("hf") or "").replace("https://huggingface.co/", "")
+        m = model_meta(repo)
+        return esc(m.get("release_date", "—") or "—"), esc(m.get("license", "—") or "—")
+    rows = []
+    for t in tts:
+        rel, lic = _tmeta(t)
+        rows.append([_vlink(t), rel, num(t.get("wer1")), num(t.get("wer2")), lic])
     sec = ('<h2 id="tts">TTS — Deutsche Stimmen</h2>\n'
            + f'<p class="note">WER je Stimme (niedriger = besser), per ASR-Rückschrift gemessen '
            f'(Whisper-large-v3 &amp; Voxtral-mini) · Stimme → HF-Engine. Anhörbare Beispiele: '
            f'<a href="{TTS_URL}">{TTS_URL}</a></p>\n'
-           + f'<div style="overflow-x:auto">{table(["Stimme", "WER (Whisper)", "WER (Voxtral)"], rows)}</div>')
+           + f'<div style="overflow-x:auto">{table(["Stimme", "Release", "WER (Whisper)", "WER (Voxtral)", "Lizenz"], rows)}</div>')
     best = tts[0]  # nach WER (Voxtral) aufsteigend sortiert
     c = card("TTS", f'{len(tts)}', f'Stimmen · beste {best["voice"]}', "#tts")
     return sec, c
@@ -485,7 +530,7 @@ def llm_chapter(data: dict | None, cid: str, title: str, lead: str, card_title: 
     if not data or not data["rows"]:
         return "", card(card_title, "—", "keine Berichte")
     cols = [c for c in PLAYBOOK_LABELS if c != "06_performance"]
-    header = (["Modell", "Gesamt", "K.O."] + [PLAYBOOK_LABELS[c] for c in cols]
+    header = (["Modell", "Release", "Gesamt", "K.O."] + [PLAYBOOK_LABELS[c] for c in cols]
               + ["Tok/s", "TTFT", "Lizenz"])
     rows = []
     for r in data["rows"]:
@@ -494,7 +539,8 @@ def llm_chapter(data: dict | None, cid: str, title: str, lead: str, card_title: 
         url = model_repo(r["profile"], r["is_saas"])
         hf = f' <a href="{esc(url)}" title="Repo/Anbieter" target="_blank" rel="noopener">↗</a>' if url else ""
         link = f'<a href="{LLM_URL}m/{esc(r["stem"])}.html">{esc(r["model"])}</a>{hf}'
-        cells = [link, f'{ov_html} {esc(r["pass_rate"])}%', str(r["ko"] or 0)]
+        rel = esc(model_meta(r["model"]).get("release_date", "—") or "—")
+        cells = [link, rel, f'{ov_html} {esc(r["pass_rate"])}%', str(r["ko"] or 0)]
         for c in cols:
             v = r["pb"].get(c)
             cells.append("—" if v is None else f"{round(float(v) * 100)}%")
@@ -523,7 +569,7 @@ def llm_local_chapter(local, roster, reports, running_prof) -> tuple[str, str]:
     degraded/ausstehend/N/A) — Spiegel der southbyte-vllm-Seite. Gültige Zeilen
     verlinken auf die Detailseite dort."""
     cols = [c for c in PLAYBOOK_LABELS if c != "06_performance"]
-    header = (["Modell", "Status", "Gesamt", "K.O."] + [PLAYBOOK_LABELS[c] for c in cols]
+    header = (["Modell", "Status", "Release", "Gesamt", "K.O."] + [PLAYBOOK_LABELS[c] for c in cols]
               + ["Tok/s", "TTFT", "Lizenz"])
     valid_by_name = {r["model"]: r for r in (local["rows"] if local else [])}
     entries, seen = [], set()
@@ -561,6 +607,7 @@ def llm_local_chapter(local, roster, reports, running_prof) -> tuple[str, str]:
         badge = f'<span class="badge {status}" data-sort="{_STATUS_RANK[status]}">{_STATUS_BADGE[status]}</span>'
         prof = m.get("profile", "") or (rep or {}).get("profile", "")
         lic = esc(model_license(prof, False))
+        rel = esc(model_meta(name).get("release_date", "—") or "—")
         if status == "valid":
             n_valid += 1
             r = valid_by_name[name]
@@ -569,7 +616,7 @@ def llm_local_chapter(local, roster, reports, running_prof) -> tuple[str, str]:
             url = model_repo(r["profile"], False)
             hf = f' <a href="{esc(url)}" title="Repo" target="_blank" rel="noopener">↗</a>' if url else ""
             link = f'<a href="{LLM_URL}m/{esc(r["stem"])}.html">{esc(name)}</a>{hf}'
-            cells = [link, badge, f'{ov_html} {esc(r["pass_rate"])}%', str(r["ko"] or 0)]
+            cells = [link, badge, rel, f'{ov_html} {esc(r["pass_rate"])}%', str(r["ko"] or 0)]
             for c in cols:
                 v = r["pb"].get(c)
                 cells.append("—" if v is None else f"{round(float(v) * 100)}%")
@@ -578,7 +625,7 @@ def llm_local_chapter(local, roster, reports, running_prof) -> tuple[str, str]:
             cells.append(f'{p["ttft_p50"]:.0f} ms' if p.get("ttft_p50") is not None else "—")
             cells.append(lic)
         elif status == "degraded":
-            cells = [esc(name), badge, f'<span class="ko">{round(rep["err_rate"] * 100)}% Fehler</span>',
+            cells = [esc(name), badge, rel, f'<span class="ko">{round(rep["err_rate"] * 100)}% Fehler</span>',
                      str(rep.get("ko") or 0)]
             for c in cols:
                 v = rep["pb"].get(c)
@@ -588,7 +635,7 @@ def llm_local_chapter(local, roster, reports, running_prof) -> tuple[str, str]:
             cells.append(f'{p["ttft_p50"]:.0f} ms' if p.get("ttft_p50") is not None else "—")
             cells.append(lic)
         else:
-            cells = [esc(name), badge, "—", "—"] + dash + [lic]
+            cells = [esc(name), badge, rel, "—", "—"] + dash + [lic]
         rows.append((status, cells))
 
     if not rows:
