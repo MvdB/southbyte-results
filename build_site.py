@@ -332,6 +332,8 @@ SORT_CSS = (
     "\n table th[aria-sort=ascending]::after{content:' \\25B2';opacity:.9}"
     "\n table th[aria-sort=descending]::after{content:' \\25BC';opacity:.9}"
     "\n table td.best{font-weight:700;color:var(--green);background:var(--bg-raised)}"
+    "\n .gtbl table{font-size:.82rem}"
+    "\n .gtbl th,.gtbl td{padding:.35rem .45rem}"
 )
 SORT_SCRIPT = """
 <script>
@@ -388,6 +390,14 @@ _BEST_DIR = {
     "TTFT": "min", "FPR": "min", "Trap-FPR": "min",
     "WER (Whisper)": "min", "WER (Voxtral)": "min",
     "Ø s/Bild": "min", "Textrender CER": "min",
+    "Präz.": "max", "Acc": "max", "FN-Rate": "min", "Lat ø": "min", "Lat p95": "min",
+}
+
+# Kurz-Header für die (breite) Guard-Metrik-Tabelle, damit sie in .wrap (960px) passt.
+_GUARD_KEY_LABEL = {
+    "n_unsafe": "Unsafe", "n_safe": "Safe", "recall": "Recall", "fn_rate": "FN-Rate",
+    "fpr": "FPR", "trap_fpr": "Trap-FPR", "precision": "Präz.", "f1": "F1",
+    "accuracy": "Acc", "latency_ms_mean": "Lat ø", "latency_ms_p95": "Lat p95",
 }
 
 
@@ -407,10 +417,11 @@ def table(headers: list[str], rows: list[list[str]]) -> str:
 def guards_section(guards: list[dict]) -> tuple[str, str]:
     if not guards:
         return "", card("Guards", "—", "kein Feldlauf")
+    hide = {"n_unsafe", "n_safe", "fn_rate"}  # konstant (Testset-Größe) bzw. redundant (=1−recall)
     keys: list[str] = []
     for g in guards:
         for k in g["metrics"]:
-            if isinstance(g["metrics"][k], (int, float)) and k not in keys:
+            if k not in hide and isinstance(g["metrics"][k], (int, float)) and k not in keys:
                 keys.append(k)
 
     def glabel(g):
@@ -423,7 +434,8 @@ def guards_section(guards: list[dict]) -> tuple[str, str]:
     sec = (f'<h2 id="guards">Guardrails (Playbook 08)</h2>\n'
            f'<p class="note">Guard-Name anklicken → Fall für Fall (Wahrheit vs. Vorhersage) auf '
            f'<a href="{LLM_URL}">southbyte-vllm</a>. Kein Judge — das Label ist die Wahrheit.</p>\n'
-           f'<div style="overflow-x:auto">{table(["Guard"] + keys + ["K.O."], rows)}</div>')
+           f'<div class="gtbl" style="overflow-x:auto">'
+           f'{table(["Guard"] + [_GUARD_KEY_LABEL.get(k, k) for k in keys] + ["K.O."], rows)}</div>')
     c = card("Guards", f'{(best["metrics"].get("f1", 0) or 0):.3f}', f'bestes F1 · {best["label"]}', "#guards")
     return sec, c
 
@@ -653,7 +665,7 @@ def build() -> str:
  .grid-bg{{position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;
    background-image:linear-gradient(rgba(0,230,118,.15) 1px,transparent 1px),
      linear-gradient(90deg,rgba(0,230,118,.15) 1px,transparent 1px);background-size:80px 80px}}
- .wrap{{position:relative;z-index:1;max-width:960px;margin:0 auto;padding:2.5rem 1.25rem}}
+ .wrap{{position:relative;z-index:1;max-width:1200px;margin:0 auto;padding:2.5rem 1.25rem}}
  .wordmark{{font-family:var(--mono);font-weight:700;font-size:1.5rem;letter-spacing:1.4px;color:var(--text)}}
  .wordmark .dot{{color:var(--green)}}
  .tagline{{font-family:var(--mono);font-size:.7rem;letter-spacing:.25em;text-transform:uppercase;
