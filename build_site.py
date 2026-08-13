@@ -59,13 +59,25 @@ _SAAS_PROVIDER = [
 ]
 
 
-def model_license(profile: str, is_saas: bool) -> str:
+def model_license(profile: str, is_saas: bool, name: str = "") -> str:
+    """Lizenz eines Modells; Cache zuerst, dann models.yaml.
+
+    Der Cache wird aus dem HF-Repo des konkreten Verzeichnisses gefuellt. Bei
+    quantisierten Mirrors ist dort oft keine Lizenz hinterlegt, dann steht ein
+    '—' im Cache (Beispiel: RedHatAI--Muse-Glimmer-30B-NVFP4). models.yaml
+    fuehrt fuer solche Verzeichnisse bewusst das offizielle Basis-Repo mit
+    dessen Lizenz — das ist hier der Rueckfall, damit die Tabelle keine leere
+    Zelle zeigt, obwohl die Lizenz bekannt ist.
+    """
     if is_saas:
         for needle, label, _ in _SAAS_PROVIDER:
             if needle in profile.lower():
                 return label
         return "proprietär (API)"
-    return _lic.get(profile, "—")
+    aus_cache = _lic.get(profile, "")
+    if aus_cache and aus_cache != "—":
+        return aus_cache
+    return str(model_meta(name).get("license", "") or "—")
 
 
 def model_repo(profile: str, is_saas: bool) -> str:
@@ -254,7 +266,11 @@ def _load_run_rows(files: list[Path]) -> tuple[list[dict], int]:
 
 def load_llm_runs() -> dict:
     """Jeweils jüngster verwertbarer Lauf je Art: 'local' und 'saas'."""
-    LOCAL_COHORT_RUN = "2026-08-08_1130"  # kanonische Kohorte; Retries kopieren hierher zurück
+    # Eine einzige Kohorte fuer alle lokalen Modelle. Der Name traegt Jahr und
+    # Judge, weil beides die Vergleichbarkeit bestimmt: Ergebnisse eines anderen
+    # Judges gehoeren nicht in dieselbe Tabelle. Einzellaeufe (neue Modelle,
+    # Retries) werden in dieses Verzeichnis zurueckkopiert; siehe KOHORTE.md dort.
+    LOCAL_COHORT_RUN = "2026-lokal-judge-claude-sonnet-5"
     locals_, saas = [], None
     for d in sorted(REPORTS_DIR.glob("2026-*"), reverse=True):
         models = [j for j in d.glob("*.json") if not re.search(r"dashboard|index", j.name, re.I)]
@@ -567,7 +583,7 @@ def llm_chapter(data: dict | None, cid: str, title: str, lead: str, card_title: 
         p = r.get("perf") or {}
         cells.append(f'{p["tok_median"]:.1f}' if p.get("tok_median") is not None else "—")
         cells.append(f'{p["ttft_p50"]:.0f} ms' if p.get("ttft_p50") is not None else "—")
-        cells.append(esc(model_license(r["profile"], r["is_saas"])))
+        cells.append(esc(model_license(r["profile"], r["is_saas"], r.get("model", ""))))
         rows.append(cells)
     best = data["rows"][0]
     sec = (f'<h2 id="{cid}">{esc(title)}</h2>\n'
@@ -626,7 +642,7 @@ def llm_local_chapter(local, roster, reports, running_prof) -> tuple[str, str]:
     for status, name, m, rep in entries:
         badge = f'<span class="badge {status}" data-sort="{_STATUS_RANK[status]}">{_STATUS_BADGE[status]}</span>'
         prof = m.get("profile", "") or (rep or {}).get("profile", "")
-        lic = esc(model_license(prof, False))
+        lic = esc(model_license(prof, False, name))
         rel = rel_cell(name)
         if status == "valid":
             n_valid += 1
@@ -786,6 +802,48 @@ Teil der <a href="https://github.com/MvdB?tab=repositories&amp;q=southbyte">sout
 """
 
 
+def pruefe_metadaten(*zeilengruppen) -> int:
+    """Warne, wenn Modelle in der Tabelle ohne Release-Datum oder Lizenz landen.
+
+    Diese Felder kommen aus models.yaml und werden ueber den REPORT-Namen
+    nachgeschlagen. Weicht der Report-Name vom Eintrag ab — etwa
+    'Muse-Glimmer-30B-NVFP4' gegen den Eintrag 'Muse-Glimmer-30B' —, greift das
+    Lookup ins Leere und die Seite zeigt stumm ein '—'. Genau so ist
+    Muse-Glimmer am 2026-08-13 ohne Release und Lizenz veroeffentlicht worden.
+
+    Gibt die Anzahl der Luecken zurueck; der Build laeuft trotzdem durch, damit
+    eine fehlende Lizenz nicht die ganze Seite blockiert.
+    """
+    fehlend: list[tuple[str, str]] = []
+    gesehen: set[str] = set()
+    for zeilen in zeilengruppen:
+        for r in zeilen or []:
+            name = r.get("model") or r.get("name") or ""
+            if not name or name in gesehen:
+                continue
+            gesehen.add(name)
+            # Bewusst ueber DIESELBEN Funktionen pruefen, die auch die Tabelle
+            # rendert. Eine Pruefung direkt gegen models.yaml meldete am
+            # 2026-08-13 faelschlich "vollstaendig", waehrend die Lizenzspalte
+            # ein '—' zeigte: die Lizenz kommt primaer aus license_cache.json,
+            # nur das Release aus models.yaml.
+            luecken = []
+            if rel_cell(name) == "—":
+                luecken.append("release_date")
+            if model_license(r.get("profile", ""), bool(r.get("is_saas")), name) == "—":
+                luecken.append("license")
+            if luecken:
+                fehlend.append((name, ", ".join(luecken)))
+    if fehlend:
+        print(f"⚠ {len(fehlend)} Modell(e) ohne vollstaendige Metadaten in {MODELS_YAML}:")
+        for name, luecken in sorted(fehlend):
+            print(f"    {name}  ->  fehlt: {luecken}")
+        print("  Der Eintrag muss exakt so heissen wie das Modell im Report.")
+    else:
+        print(f"✓ Metadaten vollstaendig ({len(gesehen)} Modelle mit Release + Lizenz)")
+    return len(fehlend)
+
+
 def main() -> int:
     DOCS.mkdir(parents=True, exist_ok=True)
     (DOCS / ".nojekyll").write_text("", encoding="utf-8")
@@ -799,6 +857,7 @@ def main() -> int:
     newest = max(cands, key=lambda s: s.split("_")[0]) if cands else "unknown"
     # llm-Count = SaaS + lokal zusammen.
     write_summary(newest, local["rows"] + saas["rows"], load_guards(), load_image(), load_tts())
+    pruefe_metadaten(local["rows"], saas["rows"])
     return 0
 
 
