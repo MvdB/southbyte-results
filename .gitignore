@@ -4,3 +4,25 @@ __pycache__/
 .DS_Store
 .idea/
 .vscode/
+
+# Secrets — nie committen (Vorfall 2026-08-12: .env.bak mit echtem JUDGE_API_KEY
+# rutschte durch eine luckenhafte .gitignore in ein oeffentliches Repo)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+
+# Logs, Backups, Temp
+*.log
+*.bak
+*.tmp
+*.orig
+*.swp
+*~
+
+# Prozess-/Loop-State
+*.pid
+nohup.out
+.loop_next
