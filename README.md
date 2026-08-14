@@ -41,6 +41,20 @@ hash of the rendered page in an XML comment and keeps its previous date while
 that hash matches. A date that jumps on every rebuild is treated as noise and
 ignored by search engines.
 
+The `<head>` also carries a schema.org `DataCatalog` as JSON-LD, with one
+`Dataset` node per modality — the metrics, the measurement technique, the
+licence and the creator, spelled out. The target here is generative search
+rather than the classic kind: a model is more likely to cite a named dataset
+with a stated method than an HTML table it has to reverse-engineer. The numbers
+come from the same feeds as the tables, so the two cannot drift apart. Security
+results and raw transcripts are not described there — they never reach the build
+in the first place.
+
+`dateModified` is the newest mtime across the source feeds, not the build time.
+The feeds are only written by an actual test run, which makes that the honest
+answer, and it keeps the page hash — and therefore `<lastmod>` — stable across
+rebuilds that changed nothing.
+
 The canonical host is `results.southbyte.de` (`docs/CNAME`); GitHub Pages
 answers the `mvdb.github.io/southbyte-results/` form with a 301 to it, so that
 is the only address in the sitemap and in `<link rel="canonical">`.

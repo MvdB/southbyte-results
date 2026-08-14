@@ -3,6 +3,278 @@
 <title>SOUTH.BYTE — Modell-Evaluationen (DGX Spark)</title>
 <meta name="description" content="Gemessene Ergebnisse offener und propriet&auml;rer KI-Modelle auf einem NVIDIA DGX Spark (GB10): Sprachmodelle, Guardrails, Text-to-Speech und Text-to-Image. Eigene Testl&auml;ufe, nachvollziehbare Kennzahlen, keine Herstellerangaben.">
 <link rel="canonical" href="https://results.southbyte.de/">
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@graph": [
+  {
+   "@type": "Organization",
+   "@id": "https://southbyte.de/#organization",
+   "name": "SouthByte",
+   "url": "https://southbyte.de",
+   "description": "AI Governance und IT-Beratung fuer den Mittelstand.",
+   "founder": {
+    "@type": "Person",
+    "name": "Michael van den Berg"
+   },
+   "knowsAbout": [
+    "AI Governance",
+    "EU AI Act",
+    "ISO/IEC 42001",
+    "Modellauswahl",
+    "On-Premises-KI",
+    "Modell-Evaluation"
+   ]
+  },
+  {
+   "@type": "WebSite",
+   "@id": "https://results.southbyte.de/#website",
+   "url": "https://results.southbyte.de/",
+   "name": "SOUTH.BYTE — Modell-Evaluationen",
+   "inLanguage": "de",
+   "publisher": {
+    "@id": "https://southbyte.de/#organization"
+   }
+  },
+  {
+   "@type": "DataCatalog",
+   "@id": "https://results.southbyte.de/#catalog",
+   "name": "Modell-Evaluationen auf NVIDIA DGX Spark",
+   "description": "Gemessene Ergebnisse offener und proprietaerer KI-Modelle ueber vier Modalitaeten hinweg: Sprachmodelle, Guardrails, Text-to-Speech und Text-to-Image. Alle Werte stammen aus eigenen Laeufen, nicht aus Herstellerangaben.",
+   "url": "https://results.southbyte.de/",
+   "inLanguage": "de",
+   "license": "https://creativecommons.org/licenses/by-nc/4.0/",
+   "isAccessibleForFree": true,
+   "creator": {
+    "@id": "https://southbyte.de/#organization"
+   },
+   "publisher": {
+    "@id": "https://southbyte.de/#organization"
+   },
+   "dateModified": "2026-08-14",
+   "dataset": [
+    {
+     "@id": "https://results.southbyte.de/#dataset-llm-lokal"
+    },
+    {
+     "@id": "https://results.southbyte.de/#dataset-llm-saas"
+    },
+    {
+     "@id": "https://results.southbyte.de/#dataset-guardrails"
+    },
+    {
+     "@id": "https://results.southbyte.de/#dataset-tts"
+    },
+    {
+     "@id": "https://results.southbyte.de/#dataset-image"
+    }
+   ],
+   "distribution": {
+    "@type": "DataDownload",
+    "name": "Kennzahlen-Zusammenfassung",
+    "encodingFormat": "application/json",
+    "contentUrl": "https://results.southbyte.de/summary.json"
+   }
+  },
+  {
+   "@type": "Dataset",
+   "@id": "https://results.southbyte.de/#dataset-llm-lokal",
+   "name": "Sprachmodelle lokal auf DGX Spark",
+   "description": "Eigene Testlaeufe von 18 Sprachmodellen, auf dem GB10 selbst mit vLLM serviert. Fuenf Playbooks: Qualitaet, Deutsch, Bias, Code, Performance. Kein Herstellerbenchmark — jede Zahl stammt aus einem Lauf auf dieser Maschine.",
+   "url": "https://results.southbyte.de/#llm-local",
+   "creator": {
+    "@id": "https://southbyte.de/#organization"
+   },
+   "publisher": {
+    "@id": "https://southbyte.de/#organization"
+   },
+   "license": "https://creativecommons.org/licenses/by-nc/4.0/",
+   "isAccessibleForFree": true,
+   "inLanguage": "de",
+   "dateModified": "2026-08-14",
+   "measurementTechnique": "Blind bewertet von claude-sonnet-5 als LLM-as-Judge; nicht parsebare Judge-Antworten zaehlen als Fehler, nicht als Bestanden. Hardware: NVIDIA DGX Spark, GB10-SoC (sm_120), 128 GB Unified Memory, aarch64",
+   "variableMeasured": [
+    {
+     "@type": "PropertyValue",
+     "name": "pass_rate",
+     "description": "Anteil bestandener Faelle je Playbook"
+    },
+    {
+     "@type": "PropertyValue",
+     "name": "tokens_per_second",
+     "description": "Ausgabegeschwindigkeit, lokal gemessen"
+    },
+    {
+     "@type": "PropertyValue",
+     "name": "ttft",
+     "description": "Zeit bis zum ersten Token in Sekunden"
+    },
+    {
+     "@type": "PropertyValue",
+     "name": "knockouts",
+     "description": "K.-o.-Kriterien, die ein Modell disqualifizieren"
+    }
+   ],
+   "keywords": [
+    "LLM",
+    "Evaluation",
+    "DGX Spark",
+    "GB10",
+    "vLLM",
+    "On-Premises",
+    "Deutsch"
+   ]
+  },
+  {
+   "@type": "Dataset",
+   "@id": "https://results.southbyte.de/#dataset-llm-saas",
+   "name": "Sprachmodelle als SaaS-Referenzkohorte",
+   "description": "Dieselben Testfaelle gegen 27 Frontier-Modelle ueber einen LiteLLM-Proxy, als Referenzrahmen fuer die lokalen Ergebnisse. Geschwindigkeitswerte messen hier Cloud und Netz, nicht die lokale Hardware.",
+   "url": "https://results.southbyte.de/#llm-saas",
+   "creator": {
+    "@id": "https://southbyte.de/#organization"
+   },
+   "publisher": {
+    "@id": "https://southbyte.de/#organization"
+   },
+   "license": "https://creativecommons.org/licenses/by-nc/4.0/",
+   "isAccessibleForFree": true,
+   "inLanguage": "de",
+   "dateModified": "2026-08-14",
+   "measurementTechnique": "Blind bewertet von claude-sonnet-5 als LLM-as-Judge; nicht parsebare Judge-Antworten zaehlen als Fehler, nicht als Bestanden",
+   "variableMeasured": [
+    {
+     "@type": "PropertyValue",
+     "name": "pass_rate",
+     "description": "Anteil bestandener Faelle je Playbook"
+    },
+    {
+     "@type": "PropertyValue",
+     "name": "tokens_per_second",
+     "description": "Ausgabegeschwindigkeit inkl. Netzweg"
+    }
+   ],
+   "keywords": [
+    "LLM",
+    "Evaluation",
+    "SaaS",
+    "LiteLLM",
+    "Referenzkohorte"
+   ]
+  },
+  {
+   "@type": "Dataset",
+   "@id": "https://results.southbyte.de/#dataset-guardrails",
+   "name": "Guardrail-Modelle",
+   "description": "5 Guardrail-Modelle gegen einen gelabelten Testsatz. Ohne Judge — das Label ist die Wahrheit, gemessen wird gegen es.",
+   "url": "https://results.southbyte.de/#guards",
+   "creator": {
+    "@id": "https://southbyte.de/#organization"
+   },
+   "publisher": {
+    "@id": "https://southbyte.de/#organization"
+   },
+   "license": "https://creativecommons.org/licenses/by-nc/4.0/",
+   "isAccessibleForFree": true,
+   "inLanguage": "de",
+   "dateModified": "2026-08-14",
+   "measurementTechnique": "Vergleich der Modellausgabe gegen ein vorab gesetztes Label; kein LLM-as-Judge",
+   "variableMeasured": [
+    {
+     "@type": "PropertyValue",
+     "name": "accuracy",
+     "description": "Trefferquote gegen das Label"
+    },
+    {
+     "@type": "PropertyValue",
+     "name": "false_positive_rate",
+     "description": "Anteil faelschlich blockierter harmloser Eingaben"
+    }
+   ],
+   "keywords": [
+    "Guardrails",
+    "AI Safety",
+    "Klassifikation",
+    "Evaluation"
+   ]
+  },
+  {
+   "@type": "Dataset",
+   "@id": "https://results.southbyte.de/#dataset-tts",
+   "name": "Text-to-Speech, deutschsprachig",
+   "description": "16 TTS-Stimmen im Rundlauf: erzeugtes Audio wird von einem ASR-Judge zurueckgelesen und gegen den Ausgangstext verglichen. Der Judge selbst ist gegen Audio mit bekanntem Inhalt kalibriert.",
+   "url": "https://results.southbyte.de/#tts",
+   "creator": {
+    "@id": "https://southbyte.de/#organization"
+   },
+   "publisher": {
+    "@id": "https://southbyte.de/#organization"
+   },
+   "license": "https://creativecommons.org/licenses/by-nc/4.0/",
+   "isAccessibleForFree": true,
+   "inLanguage": "de",
+   "dateModified": "2026-08-14",
+   "measurementTechnique": "Rundlauf TTS zu ASR; Wortfehlerrate gegen den Ausgangstext, Judge vorab kalibriert",
+   "variableMeasured": [
+    {
+     "@type": "PropertyValue",
+     "name": "wer",
+     "description": "Wortfehlerrate in Prozent"
+    },
+    {
+     "@type": "PropertyValue",
+     "name": "cer",
+     "description": "Zeichenfehlerrate in Prozent"
+    }
+   ],
+   "keywords": [
+    "Text-to-Speech",
+    "TTS",
+    "ASR",
+    "Wortfehlerrate",
+    "Deutsch",
+    "Evaluation"
+   ]
+  },
+  {
+   "@type": "Dataset",
+   "@id": "https://results.southbyte.de/#dataset-image",
+   "name": "Text-to-Image",
+   "description": "6 Bildmodelle mit identischem Promptsatz auf derselben Hardware, bewertet und zeitlich gemessen.",
+   "url": "https://results.southbyte.de/#image",
+   "creator": {
+    "@id": "https://southbyte.de/#organization"
+   },
+   "publisher": {
+    "@id": "https://southbyte.de/#organization"
+   },
+   "license": "https://creativecommons.org/licenses/by-nc/4.0/",
+   "isAccessibleForFree": true,
+   "inLanguage": "de",
+   "dateModified": "2026-08-14",
+   "measurementTechnique": "Identischer Promptsatz je Modell. Hardware: NVIDIA DGX Spark, GB10-SoC (sm_120), 128 GB Unified Memory, aarch64",
+   "variableMeasured": [
+    {
+     "@type": "PropertyValue",
+     "name": "seconds_per_image",
+     "description": "Erzeugungsdauer je Bild"
+    },
+    {
+     "@type": "PropertyValue",
+     "name": "score",
+     "description": "Bewertung des Ergebnisses"
+    }
+   ],
+   "keywords": [
+    "Text-to-Image",
+    "Diffusion",
+    "Evaluation",
+    "DGX Spark"
+   ]
+  }
+ ]
+}
+</script>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsPSJTb3V0aEJ5dGUiPgogIDx0aXRsZT5Tb3V0aEJ5dGU8L3RpdGxlPgogIDxyZWN0IHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgZmlsbD0iIzA2MEMwQSIvPgogIDx0ZXh0IHg9IjIiIHk9IjIzIgogICAgICAgIGZvbnQtZmFtaWx5PSInQ291cmllciBOZXcnLCBDb25zb2xhcywgJ1NGIE1vbm8nLCBtb25vc3BhY2UiCiAgICAgICAgZm9udC1zaXplPSIxNiIKICAgICAgICBmb250LXdlaWdodD0iNzAwIgogICAgICAgIGxldHRlci1zcGFjaW5nPSIwLjUiPgogICAgPHRzcGFuIGZpbGw9IiNENEVERTAiPlM8L3RzcGFuPjx0c3BhbiBmaWxsPSIjMDBFNjc2Ij4uPC90c3Bhbj48dHNwYW4gZmlsbD0iI0Q0RURFMCI+QjwvdHNwYW4+CiAgPC90ZXh0PgogIDxyZWN0IHg9IjIiIHk9IjI2IiB3aWR0aD0iMjgiIGhlaWdodD0iMS41IiBmaWxsPSIjMDBFNjc2IiBvcGFjaXR5PSIwLjQiLz4KPC9zdmc+Cg==">
 <style>
  :root{--bg:#060C0A;--bg-raised:#0A1410;--bg-card:#0E1A14;--border:#162A1E;--border-hi:#1A5C38;

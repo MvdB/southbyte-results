@@ -787,6 +787,179 @@ def write_seo(seite: str) -> None:
     print(f"✓ docs/sitemap.xml + robots.txt  (Stand {stand})")
 
 
+def _feed_stand() -> str:
+    """Datum des juengsten Feeds — also wann sich die Daten zuletzt geaendert haben.
+
+    Nicht das Bau-Datum: die Seite wird auch gebaut, wenn sich nichts getan hat.
+    Ein Zeitstempel im dateModified, der bei jedem Lauf hochspringt, wuerde ausserdem
+    den Seiten-Hash aendern und damit die Stabilitaet von <lastmod> in write_seo
+    zunichtemachen. Die Feeds werden nur von einem echten Testlauf geschrieben,
+    ihr mtime ist deshalb der ehrlichste verfuegbare Stand.
+    """
+    quellen = [
+        *GUARDS_DIR.glob("*.json"),
+        *IMAGE_RESULTS.glob("*_*/summary.json"),
+        *REPORTS_DIR.glob("*/*.json"),
+        *TTS_RESULTS.glob("*/*.json"),
+    ]
+    stempel = [p.stat().st_mtime for p in quellen if p.is_file()]
+    return date.fromtimestamp(max(stempel)).isoformat() if stempel else date.today().isoformat()
+
+
+def jsonld(local, saas, guards, tts, imgs) -> str:
+    """schema.org-Auszeichnung als JSON-LD im <head>.
+
+    Zweck ist nicht die klassische Suche, sondern generative: die Seite besteht
+    aus Messwerten, und Modelle zitieren eher, was sie als Datensatz mit
+    benannter Methode, Lizenz und Urheber lesen koennen, statt als HTML-Tabelle.
+    Deshalb ein DataCatalog mit fuenf Dataset-Eintraegen — einer je Modalitaet,
+    weil sich Methode und Kennzahl je Modalitaet unterscheiden.
+
+    Die Zahlen kommen aus denselben Feeds wie die Tabellen darueber; die
+    Auszeichnung kann also nicht auseinanderlaufen. Bewusst NICHT ausgezeichnet
+    sind Sicherheitsergebnisse (04) und Rohtranskripte — die verlassen die
+    Maschine nicht, siehe EXCLUDE_PLAYBOOKS.
+    """
+    org = "https://southbyte.de/#organization"
+    lizenz = "https://creativecommons.org/licenses/by-nc/4.0/"
+    stand = _feed_stand()
+
+    def var(name: str, beschreibung: str) -> dict:
+        return {"@type": "PropertyValue", "name": name, "description": beschreibung}
+
+    def datensatz(kennung, name, beschreibung, anker, technik, variablen, stichworte) -> dict:
+        return {
+            "@type": "Dataset",
+            "@id": f"{SITE_URL}#{kennung}",
+            "name": name,
+            "description": beschreibung,
+            "url": f"{SITE_URL}#{anker}",
+            "creator": {"@id": org},
+            "publisher": {"@id": org},
+            "license": lizenz,
+            "isAccessibleForFree": True,
+            "inLanguage": "de",
+            "dateModified": stand,
+            "measurementTechnique": technik,
+            "variableMeasured": [var(k, v) for k, v in variablen],
+            "keywords": stichworte,
+            # Kein size/count: schema.org kennt fuer Dataset keine solche
+            # Eigenschaft. Die Anzahl steht in der description, wo sie auch
+            # gelesen wird.
+        }
+
+    hardware = ("NVIDIA DGX Spark, GB10-SoC (sm_120), 128 GB Unified Memory, aarch64")
+    judge = ("Blind bewertet von claude-sonnet-5 als LLM-as-Judge; nicht parsebare "
+             "Judge-Antworten zaehlen als Fehler, nicht als Bestanden")
+
+    datensaetze = [
+        datensatz(
+            "dataset-llm-lokal", "Sprachmodelle lokal auf DGX Spark",
+            f"Eigene Testlaeufe von {len(local)} Sprachmodellen, auf dem GB10 selbst "
+            "mit vLLM serviert. Fuenf Playbooks: Qualitaet, Deutsch, Bias, Code, "
+            "Performance. Kein Herstellerbenchmark — jede Zahl stammt aus einem "
+            "Lauf auf dieser Maschine.",
+            "llm-local", f"{judge}. Hardware: {hardware}",
+            [("pass_rate", "Anteil bestandener Faelle je Playbook"),
+             ("tokens_per_second", "Ausgabegeschwindigkeit, lokal gemessen"),
+             ("ttft", "Zeit bis zum ersten Token in Sekunden"),
+             ("knockouts", "K.-o.-Kriterien, die ein Modell disqualifizieren")],
+            ["LLM", "Evaluation", "DGX Spark", "GB10", "vLLM", "On-Premises", "Deutsch"]),
+        datensatz(
+            "dataset-llm-saas", "Sprachmodelle als SaaS-Referenzkohorte",
+            f"Dieselben Testfaelle gegen {len(saas)} Frontier-Modelle ueber einen "
+            "LiteLLM-Proxy, als Referenzrahmen fuer die lokalen Ergebnisse. "
+            "Geschwindigkeitswerte messen hier Cloud und Netz, nicht die lokale "
+            "Hardware.",
+            "llm-saas", judge,
+            [("pass_rate", "Anteil bestandener Faelle je Playbook"),
+             ("tokens_per_second", "Ausgabegeschwindigkeit inkl. Netzweg")],
+            ["LLM", "Evaluation", "SaaS", "LiteLLM", "Referenzkohorte"]),
+        datensatz(
+            "dataset-guardrails", "Guardrail-Modelle",
+            f"{len(guards)} Guardrail-Modelle gegen einen gelabelten Testsatz. "
+            "Ohne Judge — das Label ist die Wahrheit, gemessen wird gegen es.",
+            "guards",
+            "Vergleich der Modellausgabe gegen ein vorab gesetztes Label; kein LLM-as-Judge",
+            [("accuracy", "Trefferquote gegen das Label"),
+             ("false_positive_rate", "Anteil faelschlich blockierter harmloser Eingaben")],
+            ["Guardrails", "AI Safety", "Klassifikation", "Evaluation"]),
+        datensatz(
+            "dataset-tts", "Text-to-Speech, deutschsprachig",
+            f"{len(tts)} TTS-Stimmen im Rundlauf: erzeugtes Audio wird von einem "
+            "ASR-Judge zurueckgelesen und gegen den Ausgangstext verglichen. Der "
+            "Judge selbst ist gegen Audio mit bekanntem Inhalt kalibriert.",
+            "tts",
+            "Rundlauf TTS zu ASR; Wortfehlerrate gegen den Ausgangstext, Judge vorab kalibriert",
+            [("wer", "Wortfehlerrate in Prozent"),
+             ("cer", "Zeichenfehlerrate in Prozent")],
+            ["Text-to-Speech", "TTS", "ASR", "Wortfehlerrate", "Deutsch", "Evaluation"]),
+        datensatz(
+            "dataset-image", "Text-to-Image",
+            f"{len(imgs)} Bildmodelle mit identischem Promptsatz auf derselben "
+            "Hardware, bewertet und zeitlich gemessen.",
+            "image", f"Identischer Promptsatz je Modell. Hardware: {hardware}",
+            [("seconds_per_image", "Erzeugungsdauer je Bild"),
+             ("score", "Bewertung des Ergebnisses")],
+            ["Text-to-Image", "Diffusion", "Evaluation", "DGX Spark"]),
+    ]
+
+    graph = {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "Organization",
+                "@id": org,
+                "name": "SouthByte",
+                "url": "https://southbyte.de",
+                "description": "AI Governance und IT-Beratung fuer den Mittelstand.",
+                "founder": {"@type": "Person", "name": "Michael van den Berg"},
+                "knowsAbout": ["AI Governance", "EU AI Act", "ISO/IEC 42001",
+                               "Modellauswahl", "On-Premises-KI", "Modell-Evaluation"],
+            },
+            {
+                "@type": "WebSite",
+                "@id": f"{SITE_URL}#website",
+                "url": SITE_URL,
+                "name": "SOUTH.BYTE — Modell-Evaluationen",
+                "inLanguage": "de",
+                "publisher": {"@id": org},
+            },
+            {
+                "@type": "DataCatalog",
+                "@id": f"{SITE_URL}#catalog",
+                "name": "Modell-Evaluationen auf NVIDIA DGX Spark",
+                "description": (
+                    "Gemessene Ergebnisse offener und proprietaerer KI-Modelle ueber "
+                    "vier Modalitaeten hinweg: Sprachmodelle, Guardrails, "
+                    "Text-to-Speech und Text-to-Image. Alle Werte stammen aus eigenen "
+                    "Laeufen, nicht aus Herstellerangaben."),
+                "url": SITE_URL,
+                "inLanguage": "de",
+                "license": lizenz,
+                "isAccessibleForFree": True,
+                "creator": {"@id": org},
+                "publisher": {"@id": org},
+                "dateModified": stand,
+                "dataset": [{"@id": d["@id"]} for d in datensaetze],
+                "distribution": {
+                    "@type": "DataDownload",
+                    "name": "Kennzahlen-Zusammenfassung",
+                    "encodingFormat": "application/json",
+                    "contentUrl": f"{SITE_URL}summary.json",
+                },
+            },
+            *datensaetze,
+        ],
+    }
+    # separators ohne Leerzeichen: die Datei wird nicht gelesen, nur geparst.
+    roh = json.dumps(graph, ensure_ascii=False, indent=1)
+    # </script> im Inhalt wuerde den Block beenden — kommt hier nicht vor, wird
+    # aber trotzdem entschaerft, weil die Texte aus Feeds gespeist werden.
+    roh = roh.replace("</", "<\\/")
+    return f'<script type="application/ld+json">\n{roh}\n</script>'
+
+
 def build() -> str:
     guards = load_guards()
     imgs = load_image()
@@ -807,6 +980,9 @@ def build() -> str:
     tts = load_tts()
     tts_sec, tts_card = tts_section(tts)
     cards = "\n".join([local_card, saas_card, g_card, tts_card, i_card])
+    ld = jsonld(runs["local"]["rows"] if runs.get("local") else [],
+                runs["saas"]["rows"] if runs.get("saas") else [],
+                guards, tts, imgs)
 
     # SouthByte Web-CI (southbyte-brand skill): Dark-Theme, Matrix-Grid, Wortmarke SOUTH.BYTE.
     return f"""<!doctype html>
@@ -814,6 +990,7 @@ def build() -> str:
 <title>SOUTH.BYTE — Modell-Evaluationen (DGX Spark)</title>
 <meta name="description" content="Gemessene Ergebnisse offener und propriet&auml;rer KI-Modelle auf einem NVIDIA DGX Spark (GB10): Sprachmodelle, Guardrails, Text-to-Speech und Text-to-Image. Eigene Testl&auml;ufe, nachvollziehbare Kennzahlen, keine Herstellerangaben.">
 <link rel="canonical" href="{SITE_URL}">
+{ld}
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsPSJTb3V0aEJ5dGUiPgogIDx0aXRsZT5Tb3V0aEJ5dGU8L3RpdGxlPgogIDxyZWN0IHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgZmlsbD0iIzA2MEMwQSIvPgogIDx0ZXh0IHg9IjIiIHk9IjIzIgogICAgICAgIGZvbnQtZmFtaWx5PSInQ291cmllciBOZXcnLCBDb25zb2xhcywgJ1NGIE1vbm8nLCBtb25vc3BhY2UiCiAgICAgICAgZm9udC1zaXplPSIxNiIKICAgICAgICBmb250LXdlaWdodD0iNzAwIgogICAgICAgIGxldHRlci1zcGFjaW5nPSIwLjUiPgogICAgPHRzcGFuIGZpbGw9IiNENEVERTAiPlM8L3RzcGFuPjx0c3BhbiBmaWxsPSIjMDBFNjc2Ij4uPC90c3Bhbj48dHNwYW4gZmlsbD0iI0Q0RURFMCI+QjwvdHNwYW4+CiAgPC90ZXh0PgogIDxyZWN0IHg9IjIiIHk9IjI2IiB3aWR0aD0iMjgiIGhlaWdodD0iMS41IiBmaWxsPSIjMDBFNjc2IiBvcGFjaXR5PSIwLjQiLz4KPC9zdmc+Cg==">
 <style>
  :root{{--bg:#060C0A;--bg-raised:#0A1410;--bg-card:#0E1A14;--border:#162A1E;--border-hi:#1A5C38;
