@@ -1051,7 +1051,8 @@ Kennzahlen hier; die Fall-für-Fall-Details liegen im jeweiligen Modalitäts-Rep
 {i_sec}
 <footer><span class="wm">SOUTH<span class="dot">.</span>BYTE</span> — Michael van den Berg ·
 Teil der <a href="https://github.com/MvdB?tab=repositories&amp;q=southbyte">southbyte</a>-Familie ·
-<a href="https://southbyte.de">southbyte.de</a></footer>
+<a href="https://southbyte.de">southbyte.de</a> ·
+<a href="https://southbyte.de/impressum.html">Impressum</a></footer>
 {SORT_SCRIPT}</div></body></html>
 """
 
