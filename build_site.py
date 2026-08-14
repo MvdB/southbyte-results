@@ -12,6 +12,7 @@ Transkripte/Detail leben im jeweiligen Repo. Nur stdlib; kein GPU.
 """
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import os
@@ -26,6 +27,12 @@ IMAGE_CONFIG = Path(os.environ.get("IMAGE_CONFIG", HOME / "southbyte/southbyte-i
 TTS_RESULTS = Path(os.environ.get("TTS_RESULTS", HOME / "southbyte/southbyte-tts/results"))
 REPORTS_DIR = Path(os.environ.get("REPORTS_DIR", HOME / "southbyte/southbyte-vllm/testplan/reports"))
 DOCS = Path(__file__).resolve().parent / "docs"
+
+# Kanonische Adresse der Seite. docs/CNAME zeigt auf results.southbyte.de;
+# GitHub Pages beantwortet mvdb.github.io/southbyte-results/ mit 301 dorthin.
+# Deshalb ist das hier die einzige Adresse, die in sitemap.xml und in das
+# canonical-Tag gehoert — die github.io-Adresse wuerde nur ins Leere zeigen.
+SITE_URL = "https://results.southbyte.de/"
 
 TTS_URL = "https://mvdb.github.io/southbyte-tts/"
 IMAGE_URL = "https://mvdb.github.io/southbyte-image/"
@@ -712,6 +719,74 @@ def write_summary(run_id, llm_models, guard_models, image_models, tts_models=())
     return payload
 
 
+def write_seo(seite: str) -> None:
+    """Schreibt docs/sitemap.xml und docs/robots.txt.
+
+    Beides wird mitgebaut statt von Hand gepflegt, damit <lastmod> nicht
+    veraltet — ein handgeschriebenes Datum waere nach dem naechsten Lauf falsch.
+
+    <lastmod> ist aber nur brauchbar, wenn es sich *nur* dann aendert, wenn sich
+    auch die Seite aendert; ein Datum, das bei jedem Bauen hochspringt, werten
+    Suchmaschinen als Rauschen und ignorieren es. Der Buildlauf selbst weiss das
+    nicht, also merkt sich die Sitemap einen Hash der Seite in einem Kommentar
+    und behaelt bei gleichem Hash ihr altes Datum. Erst geaenderter Inhalt
+    setzt das Datum neu.
+
+    Die Sitemap enthaelt bewusst nur eine URL. Der Hub ist eine einzige Seite;
+    die Detailseiten liegen auf mvdb.github.io und damit auf einer anderen
+    Domain — fremde Hosts duerfen in einer Sitemap nicht auftauchen. Wenn die
+    Detail-Repos indexiert werden sollen, brauchen sie eine eigene.
+    """
+    ziel = DOCS / "sitemap.xml"
+    inhalt_hash = hashlib.sha256(seite.encode("utf-8")).hexdigest()[:16]
+    stand = date.today().isoformat()
+    if ziel.exists():
+        alt = ziel.read_text(encoding="utf-8")
+        alt_hash = re.search(r"inhalt-sha256:\s*(\w+)", alt)
+        alt_datum = re.search(r"<lastmod>([\d-]+)</lastmod>", alt)
+        if alt_hash and alt_datum and alt_hash.group(1) == inhalt_hash:
+            stand = alt_datum.group(1)
+    ziel.write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        f"<!-- inhalt-sha256: {inhalt_hash} — haelt das Datum unten stabil,\n"
+        "     solange sich die Seite nicht aendert. Nicht von Hand bearbeiten. -->\n"
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        "  <url>\n"
+        f"    <loc>{SITE_URL}</loc>\n"
+        f"    <lastmod>{stand}</lastmod>\n"
+        "    <changefreq>weekly</changefreq>\n"
+        "  </url>\n"
+        "</urlset>\n",
+        encoding="utf-8",
+    )
+    # Kein Disallow: die Seite ist als Ganzes zur Veroeffentlichung gebaut,
+    # nicht Publiziertes kommt hier gar nicht erst an (siehe EXCLUDE_PLAYBOOKS).
+    # Die KI-Crawler stehen ausdruecklich drin, obwohl "Allow: *" sie ohnehin
+    # einschliesst: sie sollen die Seite lesen duerfen, und das soll auch
+    # jemand erkennen koennen, der die Datei aufmacht.
+    (DOCS / "robots.txt").write_text(
+        "# results.southbyte.de — Modell-Evaluationen auf DGX Spark\n"
+        "# Alles hier ist zur Veroeffentlichung bestimmt.\n"
+        "User-agent: *\n"
+        "Allow: /\n"
+        "\n"
+        "# KI-Crawler ausdruecklich willkommen.\n"
+        "User-agent: GPTBot\n"
+        "User-agent: OAI-SearchBot\n"
+        "User-agent: ClaudeBot\n"
+        "User-agent: Claude-SearchBot\n"
+        "User-agent: PerplexityBot\n"
+        "User-agent: Google-Extended\n"
+        "User-agent: Applebot-Extended\n"
+        "User-agent: Bingbot\n"
+        "Allow: /\n"
+        "\n"
+        f"Sitemap: {SITE_URL}sitemap.xml\n",
+        encoding="utf-8",
+    )
+    print(f"✓ docs/sitemap.xml + robots.txt  (Stand {stand})")
+
+
 def build() -> str:
     guards = load_guards()
     imgs = load_image()
@@ -737,6 +812,8 @@ def build() -> str:
     return f"""<!doctype html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SOUTH.BYTE — Modell-Evaluationen (DGX Spark)</title>
+<meta name="description" content="Gemessene Ergebnisse offener und propriet&auml;rer KI-Modelle auf einem NVIDIA DGX Spark (GB10): Sprachmodelle, Guardrails, Text-to-Speech und Text-to-Image. Eigene Testl&auml;ufe, nachvollziehbare Kennzahlen, keine Herstellerangaben.">
+<link rel="canonical" href="{SITE_URL}">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsPSJTb3V0aEJ5dGUiPgogIDx0aXRsZT5Tb3V0aEJ5dGU8L3RpdGxlPgogIDxyZWN0IHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgZmlsbD0iIzA2MEMwQSIvPgogIDx0ZXh0IHg9IjIiIHk9IjIzIgogICAgICAgIGZvbnQtZmFtaWx5PSInQ291cmllciBOZXcnLCBDb25zb2xhcywgJ1NGIE1vbm8nLCBtb25vc3BhY2UiCiAgICAgICAgZm9udC1zaXplPSIxNiIKICAgICAgICBmb250LXdlaWdodD0iNzAwIgogICAgICAgIGxldHRlci1zcGFjaW5nPSIwLjUiPgogICAgPHRzcGFuIGZpbGw9IiNENEVERTAiPlM8L3RzcGFuPjx0c3BhbiBmaWxsPSIjMDBFNjc2Ij4uPC90c3Bhbj48dHNwYW4gZmlsbD0iI0Q0RURFMCI+QjwvdHNwYW4+CiAgPC90ZXh0PgogIDxyZWN0IHg9IjIiIHk9IjI2IiB3aWR0aD0iMjgiIGhlaWdodD0iMS41IiBmaWxsPSIjMDBFNjc2IiBvcGFjaXR5PSIwLjQiLz4KPC9zdmc+Cg==">
 <style>
  :root{{--bg:#060C0A;--bg-raised:#0A1410;--bg-card:#0E1A14;--border:#162A1E;--border-hi:#1A5C38;
@@ -847,7 +924,8 @@ def pruefe_metadaten(*zeilengruppen) -> int:
 def main() -> int:
     DOCS.mkdir(parents=True, exist_ok=True)
     (DOCS / ".nojekyll").write_text("", encoding="utf-8")
-    (DOCS / "index.html").write_text(build(), encoding="utf-8")
+    seite = build()
+    (DOCS / "index.html").write_text(seite, encoding="utf-8")
     print(f"✓ docs/index.html gebaut  (guards={len(load_guards())}, image={len(load_image())})")
     runs = load_llm_runs()
     local = runs["local"] or {"run": None, "rows": []}
@@ -857,6 +935,7 @@ def main() -> int:
     newest = max(cands, key=lambda s: s.split("_")[0]) if cands else "unknown"
     # llm-Count = SaaS + lokal zusammen.
     write_summary(newest, local["rows"] + saas["rows"], load_guards(), load_image(), load_tts())
+    write_seo(seite)
     pruefe_metadaten(local["rows"], saas["rows"])
     return 0
 

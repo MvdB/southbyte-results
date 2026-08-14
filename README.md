@@ -31,6 +31,20 @@ Feeds (override via env):
 TTS links out to its own published comparison
 ([mvdb.github.io/southbyte-tts](https://mvdb.github.io/southbyte-tts/)).
 
+The build also writes `docs/sitemap.xml` and `docs/robots.txt`. Both are
+generated rather than hand-maintained so they cannot go stale. `robots.txt`
+allows everything — including the AI crawlers, listed explicitly — because the
+whole site is built for publication in the first place.
+
+`<lastmod>` only moves when the page actually changes: the sitemap carries a
+hash of the rendered page in an XML comment and keeps its previous date while
+that hash matches. A date that jumps on every rebuild is treated as noise and
+ignored by search engines.
+
+The canonical host is `results.southbyte.de` (`docs/CNAME`); GitHub Pages
+answers the `mvdb.github.io/southbyte-results/` form with a 301 to it, so that
+is the only address in the sitemap and in `<link rel="canonical">`.
+
 ## Part of the southbyte family
 
 - [southbyte-core](https://github.com/MvdB/southbyte-core) — shared index
