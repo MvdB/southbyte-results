@@ -115,9 +115,12 @@ is the only address in the sitemap and in `<link rel="canonical">`.
   — share/adapt with attribution, non-commercial.
 - **The Hugging Face dataset** (`southbyte/dgx-spark-eval`):
   [**CC BY 4.0**](https://creativecommons.org/licenses/by/4.0/) — deliberately
-  not NC. An NC clause protects a plain table of measurements very little, but
-  it excludes leaderboards, paper benchmarks and most research pipelines. The
-  website above is unaffected and stays NC.
+  not NC. The individual measurements carry little protection, but the selection
+  and arrangement do: an EU database right (§ 87a UrhG, sui generis), which
+  CC BY 4.0 licenses along with everything else. Releasing it is a decision, not
+  an oversight — being citable in leaderboards, paper benchmarks and research
+  pipelines is the point of publishing, and an NC clause would prevent exactly
+  that. The website above is unaffected and stays NC.
 - **Code** (`build_site.py`, `feeds.py`, `dataset.py`, `hf_ids.py`,
   `privacy.py`, `hf_upload.py`): MIT — see [LICENSE](LICENSE).
 - **Model outputs & names** remain under their providers' terms — see [NOTICE.md](NOTICE.md).

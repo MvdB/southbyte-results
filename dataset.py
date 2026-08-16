@@ -286,9 +286,15 @@ führt ausschließlich Aggregate.
 ## Lizenz
 
 **{LIZENZ}** (CC BY 4.0) — Weitergabe und Bearbeitung mit Namensnennung,
-kommerzielle Nutzung eingeschlossen. Bewusst nicht NC: eine reine
-Messwerttabelle schützt eine NC-Klausel kaum, schließt aber Leaderboards,
-Paper-Benchmarks und die meisten Forschungspipelines faktisch aus.
+kommerzielle Nutzung eingeschlossen.
+
+An den einzelnen Messwerten besteht kaum Schutz; an Auswahl und Anordnung —
+welche Modelle, welche Playbooks, welche Rubriken — dagegen ein
+Datenbankherstellerrecht (§ 87a UrhG, sui generis). CC BY 4.0 lizenziert dieses
+Recht ausdrücklich mit. Die Freigabe ist damit eine bewusste Entscheidung und
+kein Versehen: zitierfähig zu sein — in Leaderboards, in Paper-Auswertungen, in
+Forschungspipelines — ist der Zweck dieser Veröffentlichung, und eine
+NC-Klausel würde genau das verhindern.
 
 Die Website unter <https://results.southbyte.de/> bleibt davon unberührt bei
 CC BY-NC 4.0. Modellnamen und Modellausgaben bleiben unter den Bedingungen
