@@ -14,9 +14,9 @@ Ausgabe:
 Zwei Regeln bestimmen den Aufbau:
 
 1. model_id ist die kanonische HF-ID des Artefakts, das GERECHNET hat — nicht
-   des Basis-Repos. Nur dann verlinkt der Hub den Datensatz auf der Modellseite,
-   und nur die servierten IDs loesen ueberhaupt alle auf (vier NVIDIA-Basis-Repos
-   sind gated). Das Basis-Repo steht daneben in base_model_id.
+   des Basis-Repos. Gemessen wurde der NVFP4-/FP8-Mirror, und ueber diese ID
+   verlinkt der Hub den Datensatz auf der Modellseite. Das Basis-Repo steht
+   daneben in base_model_id.
 
 2. Messwert und Modellurteil sind am Spaltennamen unterscheidbar:
        ohne Praefix   deterministisch instrumentiert (Uhr, Zaehler, Label)
@@ -232,7 +232,7 @@ def _card(zaehler: dict[str, int], stand: str, ids: dict[str, dict]) -> str:
     return _frontmatter() + f"""
 # DGX Spark Model Evaluations
 
-{gesamt} Messläufe über fünf Modalitäten, alle auf **einer** Maschine gemessen.
+{gesamt} Messläufe in fünf Konfigurationen, alle auf **einer** Maschine gemessen.
 Keine Herstellerangaben — jede Zahl stammt aus einem eigenen Lauf. Stand: {stand}.
 
 Die Website zu denselben Daten: <https://results.southbyte.de/>
@@ -251,9 +251,8 @@ Die Website zu denselben Daten: <https://results.southbyte.de/>
 `llm_local` und `llm_saas` haben **dasselbe Schema**, damit lokal gegen SaaS
 ohne Umbau vergleichbar bleibt.
 
-`runs` liegt zusätzlich als `runs.jsonl` im Wurzelverzeichnis — zeilengleich zu
-`data/runs.parquet`, aus derselben Quelle geschrieben. Wer `jq` benutzt, nimmt
-die JSONL; der Viewer und `load_dataset` nehmen die Parquet.
+`runs` liegt zusätzlich als `runs.jsonl` im Wurzelverzeichnis, zeilengleich zu
+`data/runs.parquet`. Für `jq` die JSONL, für `load_dataset` die Parquet.
 
 ## Auf welcher Hardware
 
@@ -282,8 +281,7 @@ ein geänderter Kommentar im Playbook bewegt ihn nicht.
 | `judge_` | ein Modell hat eine Note vergeben | `judge_pass_rate_quality` |
 
 Die mittlere Gruppe ist gegen eine feste Referenz reproduzierbar, ein
-Judge-Urteil nicht. Beides „gemessen" zu nennen wäre zu großzügig, beides
-„Judge" zu nennen zu streng.
+Judge-Urteil nicht.
 
 ## Modell-IDs
 
@@ -293,10 +291,9 @@ Das offizielle Basis-Repo steht in `base_model_id`, der rohe Bezeichner des
 Endpoints in `served_model_ref`. Bei proprietären SaaS-Modellen gibt es keine
 HF-ID; dort ist `model_id` leer und nur `served_model_ref` gefüllt.
 
-Beim Bauen dieses Datensatzes lösten {n_ok} von {len(ids)} IDs gegen den Hub auf.
-
-Eine Ausnahme: `M-vdBerg/Mage-Flow` in `t2i` ist ein privates Repo. Die Zeile
-ist vollständig, der Link führt für Außenstehende aber ins Leere.
+{n_ok} von {len(ids)} IDs lösen gegen den Hub auf. Eine davon,
+`M-vdBerg/Mage-Flow` in `t2i`, ist ein privates Repo: die Zeile ist vollständig,
+der Link führt für Außenstehende ins Leere.
 
 ## Limitations
 
@@ -322,9 +319,10 @@ sollte wissen, wo sie dünn sind:
 - **`model_revision` ist der Stand des lokalen Modellspeichers**, nicht
   nachweislich der zum Messzeitpunkt. Wurde ein Modell nach dem Lauf neu
   synchronisiert, weicht der SHA ab.
-- **Die vLLM-Version ist nicht protokolliert** (`serving.version: null`). Die
-  Läufe erstrecken sich über mehrere Wochen; ein Versionswechsel dazwischen ist
-  möglich und wäre in den Daten nicht sichtbar.
+- **Die vLLM-Version ist nicht protokolliert** — `serving.version_recorded:
+  false`, `serving.version` ist leer. Die Läufe erstrecken sich über mehrere
+  Wochen; ein Versionswechsel dazwischen ist möglich und wäre in den Daten
+  nicht sichtbar.
 - **Bei `t2i` ist das Judge-Modell nicht mitgeschrieben worden.** In
   `runs.jsonl` steht `judge.recorded_in_run: false` — der Wert ist aus dem
   Default der Auswertung rekonstruiert, nicht belegt.
