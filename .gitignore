@@ -26,3 +26,8 @@ id_rsa*
 *.pid
 nohup.out
 .loop_next
+
+# Bau-Ausgabe des Datensatzes — wird aus den Feeds erzeugt, nicht gepflegt.
+dist/
+# Cache der HF-ID-Pruefung; reiner Beschleuniger, jederzeit neu aufbaubar.
+.hf_id_cache.json

@@ -13,12 +13,51 @@ to bare names. `.env`/`config/` are never read by the build.
 
 ## How it's built
 
-`build_site.py` reads the local result feeds and renders `docs/index.html`
-(published via GitHub Pages, `main` → `/docs`). No GPU, stdlib only.
+`feeds.py` reads the local result feeds and normalises them. Two consumers sit
+on top of it and cannot drift apart:
+
+| Consumer | Output |
+|---|---|
+| `build_site.py` | `docs/index.html` (GitHub Pages, `main` → `/docs`). No GPU, stdlib only. |
+| `dataset.py` | `dist/dataset/` — Parquet + `runs.jsonl` + dataset card for the HF Hub |
 
 ```bash
-python build_site.py
+python build_site.py                     # the website
+python dataset.py                        # the dataset (needs pyarrow)
+python hf_upload.py --tag dataset-v0.1.0 # publish — only ever on a tag
 ```
+
+`privacy.py` is the single home of the publication filter: the `04_security`
+playbook, curated-out models, and the raw-field denylist (prompts, model
+answers, judge reasoning, ASR transcripts, internal endpoints). Both consumers
+import it — a second copy of that rule is how something eventually slips
+through.
+
+## The dataset
+
+`dataset.py` emits the same numbers the website shows, as five Parquet configs
+(`llm_local`, `llm_saas`, `guardrails`, `tts_de`, `t2i`) plus `runs.jsonl` with
+one row of run metadata per measurement.
+
+Two rules shape it:
+
+- **`model_id` is the canonical HF ID of the artefact that actually ran** — the
+  NVFP4/FP8 mirror, not the base repo. That is both the honest answer and the
+  resolvable one: all 18 served local IDs resolve, while four of the
+  corresponding NVIDIA base repos are gated. The base repo sits alongside in
+  `base_model_id`, the raw endpoint name in `served_model_ref`. Hub auto-linking
+  on the model pages is the actual distribution channel, so the build validates
+  every ID and reports what it could not resolve.
+- **Measurement and judgement are separable by column name.** No prefix means
+  deterministically instrumented (clock, counter, ground-truth label); `asr_` /
+  `ocr_` means a model transcribed and a metric was then computed against a
+  reference; `judge_` means a model assigned a score. Judge model, prompt
+  version, prompt hash and rubric URL live in `runs.jsonl`, once per run.
+
+The upload is bound to a git tag on purpose — the site is rebuilt constantly,
+and a dataset that ships with every build produces a Hub history in which no
+one can tell which state was citable. The token is read from `HF_TOKEN` in the
+environment and is never stored in the repo.
 
 Feeds (override via env):
 
@@ -71,10 +110,16 @@ is the only address in the sitemap and in `<link rel="canonical">`.
 
 ## License
 
-- **Content & data** (metrics, testsets, generated-image gallery, write-ups):
-  [**CC BY-NC 4.0**](https://creativecommons.org/licenses/by-nc/4.0/) — share/adapt
-  with attribution, non-commercial.
-- **Code** (`build_site.py`): MIT — see [LICENSE](LICENSE).
+- **Content & data on this site** (metrics, testsets, generated-image gallery,
+  write-ups): [**CC BY-NC 4.0**](https://creativecommons.org/licenses/by-nc/4.0/)
+  — share/adapt with attribution, non-commercial.
+- **The Hugging Face dataset** (`southbyte/dgx-spark-eval`):
+  [**CC BY 4.0**](https://creativecommons.org/licenses/by/4.0/) — deliberately
+  not NC. An NC clause protects a plain table of measurements very little, but
+  it excludes leaderboards, paper benchmarks and most research pipelines. The
+  website above is unaffected and stays NC.
+- **Code** (`build_site.py`, `feeds.py`, `dataset.py`, `hf_ids.py`,
+  `privacy.py`, `hf_upload.py`): MIT — see [LICENSE](LICENSE).
 - **Model outputs & names** remain under their providers' terms — see [NOTICE.md](NOTICE.md).
 
 ---

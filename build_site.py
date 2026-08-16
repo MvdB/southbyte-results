@@ -9,23 +9,28 @@ verlinkt auf die jeweils eigene Detail-Seite des Modalitäts-Repos:
 Liest nur lokale, sonst nicht publizierte Feeds (reports/, guardrails/, image
 summary.json) und rendert ausschließlich kuratierte Übersichts-Kennzahlen —
 Transkripte/Detail leben im jeweiligen Repo. Nur stdlib; kein GPU.
+
+Diese Datei ist einer von zwei Consumern auf feeds.py; der andere ist
+dataset.py (Parquet + runs.jsonl fuer den HF-Hub). Das Laden und Normalisieren
+der Feeds steht deshalb NICHT mehr hier, sondern dort — sonst haetten Website
+und Datensatz zwei Wahrheiten. Hier steht nur noch das Rendern.
 """
 from __future__ import annotations
 
 import hashlib
 import html
 import json
-import os
 import re
 from datetime import date, datetime
 from pathlib import Path
 
-HOME = Path.home()
-GUARDS_DIR = Path(os.environ.get("GUARDS_DIR", HOME / "southbyte/southbyte-vllm/testplan/reports/guardrails"))
-IMAGE_RESULTS = Path(os.environ.get("IMAGE_RESULTS", HOME / "southbyte/southbyte-image/results"))
-IMAGE_CONFIG = Path(os.environ.get("IMAGE_CONFIG", HOME / "southbyte/southbyte-image/config/image_models.yaml"))
-TTS_RESULTS = Path(os.environ.get("TTS_RESULTS", HOME / "southbyte/southbyte-tts/results"))
-REPORTS_DIR = Path(os.environ.get("REPORTS_DIR", HOME / "southbyte/southbyte-vllm/testplan/reports"))
+from feeds import (
+    GUARD_NAME, MODELS_YAML, PLAYBOOK_LABELS, REPORTS_DIR, feed_stand,
+    image_dirs, load_guards, load_image,
+    load_llm_runs, load_roster, load_tts, model_license, model_meta, model_repo,
+    running_profile, scan_local_reports,
+)
+
 DOCS = Path(__file__).resolve().parent / "docs"
 
 # Kanonische Adresse der Seite. docs/CNAME zeigt auf results.southbyte.de;
@@ -38,104 +43,8 @@ TTS_URL = "https://mvdb.github.io/southbyte-tts/"
 IMAGE_URL = "https://mvdb.github.io/southbyte-image/"
 LLM_URL = "https://mvdb.github.io/southbyte-vllm/"   # LLM + Guard Detail-Seiten
 
-# Sicherheit (04) wird bewusst NICHT publiziert — Jailbreak/PII-Rohausgaben bleiben lokal.
-EXCLUDE_PLAYBOOKS = {"04_security"}
-# Nie publizieren (gehört in andere Collection) — laufender Orchestrator testet es
-# noch (Snapshot beim Start), Report wird hier gefiltert.
-# Die drei darunter sind am 2026-08-15 aus der Collection genommen worden; der
-# Sync sondert sie ohnehin aus. Sie bleiben hier stehen, damit ein alter Report
-# im reports-Verzeichnis sie nicht versehentlich wieder auf die Seite holt.
-_EXCLUDE_MODELS = {
-    "Qwen-AgentWorld-35B-A3B",
-    "DiffusionGemma-26B-A4B",
-    "Mistral-Medium-3.5-128B-NVFP4",
-    "Nemotron-3-Nano-Omni-30B",
-}
-PLAYBOOK_LABELS = {
-    "01_quality": "Qualität", "02_german_language": "Deutsch", "03_bias": "Bias",
-    "05_code": "Code", "06_performance": "Performance",
-}
 
-# Lizenzen: aus dem von make_public_site gepflegten Cache (kein HF-Fetch hier).
-_LICENSE_CACHE = REPORTS_DIR.parent / "license_cache.json"
-try:
-    _lic = json.loads(_LICENSE_CACHE.read_text(encoding="utf-8"))
-except (OSError, json.JSONDecodeError):
-    _lic = {}
-_SAAS_PROVIDER = [
-    ("claude", "Anthropic · proprietär", "https://www.anthropic.com/claude"),
-    ("gpt", "OpenAI · proprietär", "https://platform.openai.com/docs/models"),
-    ("gemini", "Google · proprietär", "https://ai.google.dev/gemini-api/docs/models"),
-    ("grok", "xAI · proprietär", "https://docs.x.ai/docs/models"),
-    ("xai", "xAI · proprietär", "https://docs.x.ai/docs/models"),
-    ("magistral", "Mistral · proprietär", "https://docs.mistral.ai/getting-started/models/"),
-    ("ministral", "Mistral · proprietär", "https://docs.mistral.ai/getting-started/models/"),
-    ("mistral", "Mistral · proprietär", "https://docs.mistral.ai/getting-started/models/"),
-]
-
-
-def model_license(profile: str, is_saas: bool, name: str = "") -> str:
-    """Lizenz eines Modells; Cache zuerst, dann models.yaml.
-
-    Der Cache wird aus dem HF-Repo des konkreten Verzeichnisses gefuellt. Bei
-    quantisierten Mirrors ist dort oft keine Lizenz hinterlegt, dann steht ein
-    '—' im Cache (Beispiel: RedHatAI--Muse-Glimmer-30B-NVFP4). models.yaml
-    fuehrt fuer solche Verzeichnisse bewusst das offizielle Basis-Repo mit
-    dessen Lizenz — das ist hier der Rueckfall, damit die Tabelle keine leere
-    Zelle zeigt, obwohl die Lizenz bekannt ist.
-    """
-    if is_saas:
-        for needle, label, _ in _SAAS_PROVIDER:
-            if needle in profile.lower():
-                return label
-        return "proprietär (API)"
-    aus_cache = _lic.get(profile, "")
-    if aus_cache and aus_cache != "—":
-        return aus_cache
-    return str(model_meta(name).get("license", "") or "—")
-
-
-def model_repo(profile: str, is_saas: bool) -> str:
-    if is_saas:
-        for needle, _, url in _SAAS_PROVIDER:
-            if needle in profile.lower():
-                return url
-        return ""
-    return "https://huggingface.co/" + profile.replace("--", "/", 1) if "--" in profile else ""
-
-
-MODELS_YAML = Path(os.environ.get(
-    "MODELS_YAML", HOME / "southbyte/southbyte-vllm/testplan/config/models.yaml"))
-
-
-def _load_models() -> dict:
-    """Zentrale Modell-Metadaten (name → hf_repo/release_date/license) aus models.yaml.
-    Flach über alle Sektionen; Namen sind eindeutig (TTS-Keys = Engine-Repo)."""
-    out: dict = {}
-    try:
-        lines = MODELS_YAML.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return out
-    cur = None
-    for ln in lines:
-        m = re.match(r'\s*-\s*name:\s*"?([^"#\n]+?)"?\s*$', ln)
-        if m:
-            cur = {}
-            out[m.group(1).strip()] = cur
-            continue
-        f = re.match(r'\s+(hf_repo|release_date|license|provider):\s*"?([^"#\n]+?)"?\s*$', ln)
-        if f and cur is not None:
-            cur[f.group(1)] = f.group(2).strip()
-    return out
-
-
-_MODELS = _load_models()
-
-
-def model_meta(name: str) -> dict:
-    return _MODELS.get(name or "", {})
-
-
+# ── Render-Helfer ────────────────────────────────────────────────────────────
 def rel_cell(name: str) -> str:
     """Release-Zelle mit numerischem Sortier-Key (YYYYMM); sonst liest der
     Sortierer nur '2026' und ignoriert den Monat."""
@@ -144,258 +53,6 @@ def rel_cell(name: str) -> str:
     return f'<span data-sort="{m.group(1)}{m.group(2)}">{esc(d)}</span>' if m else "—"
 
 
-def _image_dirs() -> dict:
-    """name→hf-dir aus southbyte-image/config/image_models.yaml (stdlib-Regex)."""
-    out: dict = {}
-    try:
-        lines = IMAGE_CONFIG.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return out
-    name = None
-    for ln in lines:
-        g = re.match(r'\s*-\s*name:\s*"?([^"#\n]+?)"?\s*$', ln)
-        if g:
-            name = g.group(1).strip()
-            continue
-        d = re.match(r'\s*dir:\s*"?([^"#\s]+)"?', ln)
-        if d and name:
-            out[name] = d.group(1)
-            name = None
-    return out
-
-
-# ── Feeds laden ──────────────────────────────────────────────────────────────
-def slugify(s) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", str(s).lower()).strip("-")
-
-
-def load_guards() -> list[dict]:
-    out = []
-    for j in sorted(GUARDS_DIR.glob("*.json")):
-        try:
-            d = json.loads(j.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        out.append({"label": d.get("label", j.stem), "metrics": d.get("metrics", {}),
-                    "knockouts": d.get("knockouts", []), "has_detail": bool(d.get("per_case")),
-                    "slug": slugify(d.get("label", j.stem))})
-    return out
-
-
-def load_image() -> list[dict]:
-    """Neuester Lauf je Modell."""
-    runs: dict[str, dict] = {}
-    for s in sorted(IMAGE_RESULTS.glob("*_*/summary.json")):
-        try:
-            d = json.loads(s.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        runs[d.get("model", s.parent.name)] = d
-    return list(runs.values())
-
-
-def load_tts() -> list[dict]:
-    """WER je TTS-Stimme aus den Rescore-Judge-Läufen (Whisper=judge1, Voxtral=judge2)."""
-    out = []
-    for j in sorted(TTS_RESULTS.glob("*_suite_*/rescore_judge2.json")):
-        try:
-            d = json.loads(j.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        run = str(d.get("run") or j.parent.name)
-        voice = re.sub(r"^\d{4}-\d{2}-\d{2}_suite_", "", run)  # → 'chatterbox-de-f1'
-        hf = ""  # Stimme → zugrundeliegendes HF-Engine-Repo (aus summary.json, nicht raten)
-        try:
-            sm = json.loads((j.parent / "summary.json").read_text(encoding="utf-8"))
-            raw = str(sm.get("tts_model") or "").strip()
-            repo = ""
-            for seg in raw.split("/"):                 # 'owner--model'-Segment im Pfad finden
-                if "--" in seg:
-                    repo = seg.replace("--", "/", 1)
-                    break
-            if not repo and re.match(r"^[\w.-]+/[\w.-]+$", raw):  # direkte owner/model-Form (z.B. Voxtral)
-                repo = raw
-            if repo:
-                hf = "https://huggingface.co/" + repo
-        except (OSError, json.JSONDecodeError):
-            pass
-        out.append({"voice": voice, "hf": hf,
-                    "wer1": d.get("wer_judge1_mean"), "wer2": d.get("wer_judge2_mean")})
-    out.sort(key=lambda r: r["wer2"] if r["wer2"] is not None else 9)
-    return out
-
-
-def _perf(pbs: dict) -> dict | None:
-    """TTFT + Tok/s aus 06_performance/perf_benchmark (response auf 500 Zeichen
-    gekürzt → regex-tolerant; Kernwerte liegen im erhaltenen Präfix)."""
-    pb = pbs.get("06_performance")
-    if not isinstance(pb, dict):
-        return None
-    r = next((x for x in pb.get("results", []) if x.get("test_id") == "perf_benchmark"), None)
-    if not r:
-        return None
-    s = r.get("response", "") or ""
-
-    def numv(key):
-        m = re.search(rf'"{key}"\s*:\s*([\d.]+)', s)
-        return float(m.group(1)) if m else None
-
-    p = {"ttft_p50": numv("ttft_p50_ms"), "tok_median": numv("throughput_median_tok_s"),
-         "tok_mean": numv("throughput_mean_tok_s")}
-    return p if (p["tok_median"] is not None or p["ttft_p50"] is not None) else None
-
-
-def _load_run_rows(files: list[Path]) -> tuple[list[dict], int]:
-    """Kuratierte Kennzahlen-Zeilen eines Laufs + Anzahl SaaS-servierter Modelle.
-    Abgebrochene Läufe (ERROR-Rate > 30 %, z.B. Budget-Cap) werden übersprungen."""
-    rows, saas = [], 0
-    for j in files:
-        try:
-            d = json.loads(j.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        meta, summ, pbs = d.get("meta", {}), d.get("summary", {}), d.get("playbooks", {})
-        total = err = 0
-        for k, v in pbs.items():
-            if k in EXCLUDE_PLAYBOOKS or not isinstance(v, dict):
-                continue
-            for res in v.get("results", []):
-                total += 1
-                if res.get("verdict") == "error":
-                    err += 1
-        if total == 0 or err / total > 0.3:
-            continue
-        name = str(meta.get("model") or j.stem).rsplit("/", 1)[-1]
-        if name in _EXCLUDE_MODELS:
-            continue
-        if meta.get("source") == "saas_proxy":
-            saas += 1
-        pr = {k: v.get("pass_rate") for k, v in pbs.items()
-              if k not in EXCLUDE_PLAYBOOKS and isinstance(v, dict)}
-        rows.append({"model": name, "overall": summ.get("overall"), "pass_rate": summ.get("pass_rate"),
-                     "ko": summ.get("knockouts", 0), "pb": pr, "stem": j.stem, "perf": _perf(pbs),
-                     "profile": meta.get("profile", ""), "is_saas": meta.get("source") == "saas_proxy"})
-    rows.sort(key=lambda r: float(r["pass_rate"] or 0), reverse=True)
-    return rows, saas
-
-
-def load_llm_runs() -> dict:
-    """Jeweils jüngster verwertbarer Lauf je Art: 'local' und 'saas'."""
-    # Eine einzige Kohorte fuer alle lokalen Modelle. Der Name traegt Jahr und
-    # Judge, weil beides die Vergleichbarkeit bestimmt: Ergebnisse eines anderen
-    # Judges gehoeren nicht in dieselbe Tabelle. Einzellaeufe (neue Modelle,
-    # Retries) werden in dieses Verzeichnis zurueckkopiert; siehe KOHORTE.md dort.
-    LOCAL_COHORT_RUN = "2026-lokal-judge-claude-sonnet-5"
-    locals_, saas = [], None
-    for d in sorted(REPORTS_DIR.glob("2026-*"), reverse=True):
-        models = [j for j in d.glob("*.json") if not re.search(r"dashboard|index", j.name, re.I)]
-        if len(models) < 3:
-            continue
-        rows, nsaas = _load_run_rows(sorted(models))
-        if len(rows) < 3:
-            continue
-        if nsaas * 2 >= len(rows):
-            if saas is None:
-                saas = {"run": d.name, "rows": rows}
-        else:
-            locals_.append({"run": d.name, "rows": rows})
-    # lokale Kohorte gepinnt (nicht neuestes Retry-Dir, nicht größter Altlauf), sonst neuester
-    local = next((r for r in locals_ if r["run"] == LOCAL_COHORT_RUN), None) \
-        or (locals_[0] if locals_ else None)
-    return {"local": local, "saas": saas}
-
-
-def load_roster() -> list[dict]:
-    """Kohorten-Plan aus southbyte-vllm/testplan/config/testplan.yaml (stdlib-Regex,
-    kein pyyaml). Roster = active ODER explizit N/A. (name, profile, active, na)."""
-    cfg = REPORTS_DIR.parent / "config" / "testplan.yaml"
-    try:
-        txt = cfg.read_text(encoding="utf-8")
-    except OSError:
-        return []
-    out = []
-    for b in re.split(r"\n\s*-\s+name:\s*", txt)[1:]:
-        name = b.splitlines()[0].strip().strip("\"'")
-        mp = re.search(r'\n\s*profile:\s*"?([^"\n]+)"?', b)
-        if not mp:
-            continue
-        profile = mp.group(1).strip().strip("\"'")
-        # SaaS-Modelle gehoeren nicht in dieses Roster. Es zeigt die lokale
-        # Kohorte auf dem GB10 mit Status je Modell; ein Modell, das ueber einen
-        # Proxy laeuft, hat dort keinen Platz und erschien als Zeile aus lauter
-        # Strichen — es gibt ja keinen lokalen Bericht dazu. Aufgefallen, als
-        # Grok-4.6 als erstes SaaS-Modell in testplan.yaml stand.
-        mm = re.search(r'\n\s*machine:\s*"?(\w+)"?', b)
-        if mm and mm.group(1) == "saas":
-            continue
-        ma = re.search(r"\n\s*active:\s*(true|false)", b)
-        active = (ma.group(1) == "true") if ma else True
-        mn = re.search(r'\n\s*notes:\s*"?(.*)', b)
-        note = mn.group(1) if mn else ""
-        na = (not active) and bool(re.search(r"\bN/?A\b", name + " " + note))
-        # Auch hier filtern, nicht nur bei den Laufergebnissen. Das Roster zeigt
-        # bewusst jedes geplante Modell mit Status — ein aussortiertes Modell
-        # bliebe sonst als Zeile mit lauter Strichen stehen, obwohl es niemand
-        # mehr testen wird.
-        if name in _EXCLUDE_MODELS:
-            continue
-        out.append({"name": name, "profile": profile, "active": active, "na": na})
-    return out
-
-
-def _scan_local_reports(run_dir) -> dict:
-    """ALLE lokalen Reports eines Laufs (auch fehlerhafte) → {name: info} mit
-    Validitätsflag — Basis für die Roster-Statusspalte."""
-    out = {}
-    if not run_dir:
-        return out
-    for j in sorted(Path(run_dir).glob("*.json")):
-        if re.search(r"dashboard|index|summary", j.name, re.I):
-            continue
-        try:
-            d = json.loads(j.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        meta, summ, pbs = d.get("meta", {}), d.get("summary", {}), d.get("playbooks", {})
-        if meta.get("source") == "saas_proxy":
-            continue
-        total = err = 0
-        for k, v in pbs.items():
-            if k in EXCLUDE_PLAYBOOKS or not isinstance(v, dict):
-                continue
-            for res in v.get("results", []):
-                total += 1
-                if res.get("verdict") == "error":
-                    err += 1
-        rate = (err / total) if total else 1.0
-        name = str(meta.get("model") or j.stem).rsplit("/", 1)[-1]
-        if name in _EXCLUDE_MODELS:
-            continue
-        pr = {k: v.get("pass_rate") for k, v in pbs.items()
-              if k not in EXCLUDE_PLAYBOOKS and isinstance(v, dict)}
-        out[name] = {"stem": j.stem, "err_rate": rate, "valid": total > 0 and rate <= 0.3,
-                     "pass_rate": summ.get("pass_rate"), "overall": summ.get("overall"),
-                     "ko": summ.get("knockouts", 0), "pb": pr, "perf": _perf(pbs),
-                     "profile": meta.get("profile", ""), "total": total}
-    return out
-
-
-def _running_profile() -> str:
-    """Profil-Dir des aktuell servierten vLLM-Containers (Status „läuft"), best effort."""
-    try:
-        import subprocess
-        out = subprocess.run(["docker", "ps", "--format", "{{.Names}}"],
-                             capture_output=True, text=True, timeout=5).stdout
-    except Exception:
-        return ""
-    for ln in out.splitlines():
-        ln = ln.strip()
-        if ln.startswith("vllm-") and "--" in ln:
-            return ln[len("vllm-"):]
-    return ""
-
-
-# ── Render-Helfer ────────────────────────────────────────────────────────────
 def esc(x) -> str:
     return html.escape(str(x))
 
@@ -514,17 +171,13 @@ def guards_section(guards: list[dict]) -> tuple[str, str]:
             if k not in hide and isinstance(g["metrics"][k], (int, float)) and k not in keys:
                 keys.append(k)
 
-    _GN = {"granite-guardian": "Granite-Guardian-4.1-8B", "gpt-oss-safeguard": "gpt-oss-safeguard-20b",
-           "nemotron-3-5": "Nemotron-3.5-Content-Safety", "nemotron-3": "Nemotron-3-Content-Safety",
-           "shieldstral": "Shieldstral-1.0-3B"}
-
     def glabel(g):
         return (f'<a href="{LLM_URL}g/{esc(g["slug"])}.html">{esc(g["label"])}</a>'
                 if g.get("has_detail") else esc(g["label"]))
 
     def glic(g):
-        return esc(model_meta(_GN.get(g["slug"], "")).get("license", "—") or "—")
-    rows = [[glabel(g), rel_cell(_GN.get(g["slug"], ""))] + [num(g["metrics"].get(k)) for k in keys]
+        return esc(model_meta(GUARD_NAME.get(g["slug"], "")).get("license", "—") or "—")
+    rows = [[glabel(g), rel_cell(GUARD_NAME.get(g["slug"], ""))] + [num(g["metrics"].get(k)) for k in keys]
             + [glic(g)] for g in guards]
     best = max(guards, key=lambda g: g["metrics"].get("f1", 0) or 0)
     sec = (f'<h2 id="guards">Guardrails (Playbook 08)</h2>\n'
@@ -539,7 +192,7 @@ def guards_section(guards: list[dict]) -> tuple[str, str]:
 def image_section(imgs: list[dict]) -> tuple[str, str]:
     if not imgs:
         return "", card("Image", "—", "kein Feldlauf")
-    dirs = _image_dirs()
+    dirs = image_dirs()
 
     def _mlink(name) -> str:
         name = name or ""
@@ -809,25 +462,6 @@ def write_seo(seite: str) -> None:
     print(f"✓ docs/sitemap.xml + robots.txt  (Stand {stand})")
 
 
-def _feed_stand() -> str:
-    """Datum des juengsten Feeds — also wann sich die Daten zuletzt geaendert haben.
-
-    Nicht das Bau-Datum: die Seite wird auch gebaut, wenn sich nichts getan hat.
-    Ein Zeitstempel im dateModified, der bei jedem Lauf hochspringt, wuerde ausserdem
-    den Seiten-Hash aendern und damit die Stabilitaet von <lastmod> in write_seo
-    zunichtemachen. Die Feeds werden nur von einem echten Testlauf geschrieben,
-    ihr mtime ist deshalb der ehrlichste verfuegbare Stand.
-    """
-    quellen = [
-        *GUARDS_DIR.glob("*.json"),
-        *IMAGE_RESULTS.glob("*_*/summary.json"),
-        *REPORTS_DIR.glob("*/*.json"),
-        *TTS_RESULTS.glob("*/*.json"),
-    ]
-    stempel = [p.stat().st_mtime for p in quellen if p.is_file()]
-    return date.fromtimestamp(max(stempel)).isoformat() if stempel else date.today().isoformat()
-
-
 def jsonld(local, saas, guards, tts, imgs) -> str:
     """schema.org-Auszeichnung als JSON-LD im <head>.
 
@@ -844,7 +478,7 @@ def jsonld(local, saas, guards, tts, imgs) -> str:
     """
     org = "https://southbyte.de/#organization"
     lizenz = "https://creativecommons.org/licenses/by-nc/4.0/"
-    stand = _feed_stand()
+    stand = feed_stand()
 
     def var(name: str, beschreibung: str) -> dict:
         return {"@type": "PropertyValue", "name": name, "description": beschreibung}
@@ -990,8 +624,8 @@ def build() -> str:
     i_sec, i_card = image_section(imgs)
     roster = load_roster()
     run_dir = (REPORTS_DIR / runs["local"]["run"]) if runs.get("local") else None
-    reports = _scan_local_reports(run_dir)
-    running_prof = _running_profile()
+    reports = scan_local_reports(run_dir)
+    running_prof = running_profile()
     local_sec, local_card = llm_local_chapter(runs["local"], roster, reports, running_prof)
     saas_sec, saas_card = llm_chapter(
         runs["saas"], "llm-saas", "LLM — SaaS-Referenzkohorte",
