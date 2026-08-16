@@ -322,7 +322,6 @@ def llm_local_chapter(local, roster, reports, running_prof) -> tuple[str, str]:
     dash = ["—"] * (len(cols) + 2)
     rows, n_valid = [], 0
     for status, name, m, rep in entries:
-        badge = f'<span class="badge {status}" data-sort="{_STATUS_RANK[status]}">{_STATUS_BADGE[status]}</span>'
         prof = m.get("profile", "") or (rep or {}).get("profile", "")
         lic = esc(model_license(prof, False, name))
         rel = rel_cell(name)
@@ -714,11 +713,6 @@ def build() -> str:
  code{{font-family:var(--mono);color:var(--green);background:var(--bg-card);padding:.05em .35em;border-radius:4px}}
  a{{color:var(--green)}} a:hover{{color:var(--green-dim)}} strong{{color:var(--text)}}
  .ko{{color:var(--ko);font-weight:600}} .empty,.note{{color:var(--text-muted);font-size:.9rem}}
- .badge{{font-family:var(--mono);font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;
-   padding:.1em .5em;border-radius:4px;border:1px solid var(--border-hi);white-space:nowrap}}
- .badge.valid{{color:var(--green)}} .badge.running{{color:var(--amber)}}
- .badge.degraded{{color:#F59E0B;border-color:#7A4A0A}} .badge.pending{{color:var(--text-muted)}}
- .badge.na{{color:var(--text-dim)}}
  tr.st-degraded td:first-child,tr.st-pending td:first-child,tr.st-na td:first-child{{color:var(--text-muted)}}
  footer{{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--border);color:var(--text-muted);font-size:.82rem}}
  footer .wm{{font-family:var(--mono);font-weight:700;letter-spacing:1px;color:var(--text)}}
