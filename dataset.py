@@ -177,7 +177,7 @@ def _runs(alle: dict[str, list[feeds.Messlauf]]) -> list[dict]:
                             "version_recorded": False},
                 "judge": _judge_flach(lauf.judge),
                 "instruments": lauf.instrumente,
-                "excluded": sorted(privacy.EXCLUDE_PLAYBOOKS) if config.startswith("llm") else [],
+                "excluded": sorted(privacy.GESPERRTE_PLAYBOOKS) if config.startswith("llm") else [],
             })
     return out
 

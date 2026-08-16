@@ -476,7 +476,7 @@ def write_seo(seite: str) -> None:
         encoding="utf-8",
     )
     # Kein Disallow: die Seite ist als Ganzes zur Veroeffentlichung gebaut,
-    # nicht Publiziertes kommt hier gar nicht erst an (siehe EXCLUDE_PLAYBOOKS).
+    # nicht Publiziertes kommt hier gar nicht erst an (siehe PUBLIC_PLAYBOOKS in privacy.py).
     # Die KI-Crawler stehen ausdruecklich drin, obwohl "Allow: *" sie ohnehin
     # einschliesst: sie sollen die Seite lesen duerfen, und das soll auch
     # jemand erkennen koennen, der die Datei aufmacht.
@@ -515,7 +515,7 @@ def jsonld(local, saas, guards, tts, imgs) -> str:
     Die Zahlen kommen aus denselben Feeds wie die Tabellen darueber; die
     Auszeichnung kann also nicht auseinanderlaufen. Bewusst NICHT ausgezeichnet
     sind Sicherheitsergebnisse (04) und Rohtranskripte — die verlassen die
-    Maschine nicht, siehe EXCLUDE_PLAYBOOKS.
+    Maschine nicht, siehe PUBLIC_PLAYBOOKS in privacy.py.
     """
     org = "https://southbyte.de/#organization"
     lizenz = "https://creativecommons.org/licenses/by-nc/4.0/"
