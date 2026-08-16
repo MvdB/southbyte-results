@@ -9,27 +9,29 @@ da und niemand findet ihn.
 
 Welche ID die richtige ist
 --------------------------
-Nicht das Basis-Repo, sondern das Artefakt, das tatsaechlich gerechnet hat.
-Gemessen am 2026-08-16 gegen den Hub:
+Nicht das Basis-Repo, sondern das Artefakt, das tatsaechlich gerechnet hat —
+bei quantisierten Laeufen also der NVFP4-/FP8-Mirror. Gemessen wurde dieses
+Gewicht, nicht das Basis-Gewicht. Das Basis-Repo wandert in base_model_id,
+damit der Hub beide Seiten verlinkt.
 
-  * alle 18 servierten lokalen Profile loesen auf (auch die NVFP4-/FP8-Mirror)
-  * von den zugehoerigen Basis-Repos aus models.yaml loesen 4 NICHT auf —
-    NVIDIA gated sie, anonym gibt es nur 401
-
-Die servierte ID ist also gleichzeitig die ehrlichere und die auffindbarere.
-Das Basis-Repo wandert in base_model_id, damit der Hub beide Seiten verlinkt.
+Stand 2026-08-16 loesen alle IDs auf, servierte wie Basis. Das war nicht immer
+so: bis zur Korrektur von models.yaml am selben Tag standen dort neun Repos,
+die es nicht gab.
 
 Warum die Pruefung dreistufig ist
 ---------------------------------
 Die HF-API antwortet anonym auf "existiert nicht", "privat" und "gated"
-identisch mit 401. Nachgemessen:
+identisch mit 401. Nachgemessen am 2026-08-16:
 
-  MvdB/definitiv-nicht-existent-xyz      -> 401
-  nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B  -> 401   (gated, existiert)
-  M-vdBerg/Mage-Flow                     -> 401   (privat, existiert)
+  ID                                     anonym   mit Token
+  MvdB/definitiv-nicht-existent-xyz      401      404  (gibt es nicht)
+  nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B  401      404  (gibt es auch nicht)
+  M-vdBerg/Mage-Flow                     401      200  (privat, existiert)
 
-Ein Tippfehler ist ohne Token also nicht von einem gated Repo zu unterscheiden.
-Deshalb:
+Die zweite Zeile stand hier eine Fassung lang als "gated, existiert" — geraten,
+nicht gemessen, und falsch. Genau dieser Fehler ist der Grund fuer Stufe 2:
+ohne Token ist ein Tippfehler von einem verschlossenen Repo nicht zu
+unterscheiden, und die naheliegende Annahme ist die falsche. Deshalb:
 
   Stufe 0  ~/hf_models/.sync_state.json — was hf_sync einmal aufgeloest hat,
            existiert. Offline, kostenlos, deckt das private Mage-Flow ab.

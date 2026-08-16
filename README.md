@@ -42,12 +42,12 @@ one row of run metadata per measurement.
 Two rules shape it:
 
 - **`model_id` is the canonical HF ID of the artefact that actually ran** — the
-  NVFP4/FP8 mirror, not the base repo. That is both the honest answer and the
-  resolvable one: all 18 served local IDs resolve, while four of the
-  corresponding NVIDIA base repos are gated. The base repo sits alongside in
-  `base_model_id`, the raw endpoint name in `served_model_ref`. Hub auto-linking
-  on the model pages is the actual distribution channel, so the build validates
-  every ID and reports what it could not resolve.
+  NVFP4/FP8 mirror, not the base repo, because that is the weight the numbers
+  describe. The base repo sits alongside in `base_model_id`, the raw endpoint
+  name in `served_model_ref`. Hub auto-linking on the model pages is the actual
+  distribution channel, so the build validates every ID and reports what it
+  could not resolve — anonymously the Hub answers `401` for "missing", "private"
+  and "gated" alike, so that check is only worth running with a token.
 - **Measurement and judgement are separable by column name.** No prefix means
   deterministically instrumented (clock, counter, ground-truth label); `asr_` /
   `ocr_` means a model transcribed and a metric was then computed against a
@@ -88,15 +88,13 @@ whole site is built for publication in the first place.
 
 `<lastmod>` only moves when the page actually changes: the sitemap carries a
 hash of the rendered page in an XML comment and keeps its previous date while
-that hash matches. A date that jumps on every rebuild is treated as noise and
-ignored by search engines.
+that hash matches.
 
 The `<head>` also carries a schema.org `DataCatalog` as JSON-LD, with one
 `Dataset` node per modality — the metrics, the measurement technique, the
-licence and the creator, spelled out. The target here is generative search
-rather than the classic kind: a model is more likely to cite a named dataset
-with a stated method than an HTML table it has to reverse-engineer. The numbers
-come from the same feeds as the tables, so the two cannot drift apart. Security
+licence and the creator, spelled out, so the method does not have to be
+reverse-engineered from the tables. The numbers come from the same feeds as the
+tables, so the two cannot drift apart. Security
 results and raw transcripts are not described there — they never reach the build
 in the first place.
 
