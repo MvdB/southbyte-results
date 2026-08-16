@@ -250,6 +250,9 @@ HF-ID; dort ist `model_id` leer und nur `served_model_ref` gefüllt.
 
 Beim Bauen dieses Datensatzes lösten {n_ok} von {len(ids)} IDs gegen den Hub auf.
 
+Eine Ausnahme: `M-vdBerg/Mage-Flow` in `t2i` ist ein privates Repo. Die Zeile
+ist vollständig, der Link führt für Außenstehende aber ins Leere.
+
 ## Limitations
 
 Diese Zahlen sind ein Einzelbefund, kein Benchmark-Ergebnis. Wer sie zitiert,
