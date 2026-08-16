@@ -59,6 +59,17 @@ and a dataset that ships with every build produces a Hub history in which no
 one can tell which state was citable. The token is read from `HF_TOKEN` in the
 environment and is never stored in the repo.
 
+**Publishing a data refresh** means a new tag, not a re-push of the old one:
+
+```bash
+python dataset.py                          # rebuild from the feeds, check the counts
+git tag -a dataset-v0.2.0 -m "…"           # what changed, in the annotation
+python hf_upload.py                        # picks the tag up from HEAD
+```
+
+Moving an existing tag would leave the Hub history claiming a state that no
+longer matches the tag, which defeats the point of tagging in the first place.
+
 Feeds (override via env):
 
 | Env | Default | Source |

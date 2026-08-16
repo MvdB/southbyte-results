@@ -43,6 +43,12 @@ TTS_URL = "https://mvdb.github.io/southbyte-tts/"
 IMAGE_URL = "https://mvdb.github.io/southbyte-image/"
 LLM_URL = "https://mvdb.github.io/southbyte-vllm/"   # LLM + Guard Detail-Seiten
 
+# Dieselben Zahlen als Datensatz (Parquet + runs.jsonl), gebaut von dataset.py
+# aus derselben Quelle wie diese Seite. Der Hub verlinkt ihn auf den
+# Modellseiten; die Rueckrichtung muss von hier kommen, sonst erfaehrt niemand,
+# der auf dieser Seite landet, dass es die Daten zum Herunterladen gibt.
+DATASET_URL = "https://huggingface.co/datasets/southbyte/dgx-spark-eval"
+
 
 # ── Render-Helfer ────────────────────────────────────────────────────────────
 def rel_cell(name: str) -> str:
@@ -420,6 +426,9 @@ def write_summary(run_id, llm_models, guard_models, image_models, tts_models=())
         "counts": {"llm": len(llm_models), "guard": len(guard_models),
                    "image": len(image_models), "tts": len(tts_models)},
         "url": "https://mvdb.github.io/southbyte-results/",
+        # Damit die Chips auf southbyte.de auch auf den Datensatz zeigen koennen,
+        # ohne die Adresse ein zweites Mal irgendwo zu pflegen.
+        "dataset": DATASET_URL,
     }
     (DOCS / "summary.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     print(f"✓ docs/summary.json  {payload['counts']}")
@@ -630,12 +639,30 @@ def jsonld(local, saas, guards, tts, imgs) -> str:
                 "publisher": {"@id": org},
                 "dateModified": stand,
                 "dataset": [{"@id": d["@id"]} for d in datensaetze],
-                "distribution": {
-                    "@type": "DataDownload",
-                    "name": "Kennzahlen-Zusammenfassung",
-                    "encodingFormat": "application/json",
-                    "contentUrl": f"{SITE_URL}summary.json",
-                },
+                # Zwei Bezugswege, absichtlich in dieser Reihenfolge: die
+                # Zusammenfassung ist die knappe Auskunft, der Datensatz die
+                # vollstaendige. Wer die Auszeichnung maschinell liest, soll
+                # nicht auf der Seite herumraten muessen, wo die Zahlen als
+                # Datei liegen — dafuer ist distribution da.
+                "distribution": [
+                    {
+                        "@type": "DataDownload",
+                        "name": "Kennzahlen-Zusammenfassung",
+                        "encodingFormat": "application/json",
+                        "contentUrl": f"{SITE_URL}summary.json",
+                    },
+                    {
+                        "@type": "DataDownload",
+                        "name": "Vollstaendiger Datensatz (Parquet + runs.jsonl)",
+                        "description": (
+                            "Fuenf Configs je Modalitaet plus Lauf-Metadaten, "
+                            "aus derselben Quelle wie diese Seite erzeugt. "
+                            "CC BY 4.0."),
+                        "encodingFormat": "application/vnd.apache.parquet",
+                        "contentUrl": DATASET_URL,
+                        "license": "https://creativecommons.org/licenses/by/4.0/",
+                    },
+                ],
             },
             *datensaetze,
         ],
@@ -725,7 +752,9 @@ def build() -> str:
 <div class="tagline">AI Governance &amp; IT-Beratung</div></header>
 <h1>Modell-Evaluationen</h1>
 <p class="lede">Cross-Modality-Überblick über alle Modell-Arten auf dem NVIDIA DGX Spark (GB10).
-Kennzahlen hier; die Fall-für-Fall-Details liegen im jeweiligen Modalitäts-Repo (verlinkt).</p>
+Kennzahlen hier; die Fall-für-Fall-Details liegen im jeweiligen Modalitäts-Repo (verlinkt).
+Dieselben Zahlen zum Weiterrechnen als <a href="{DATASET_URL}">Datensatz auf Hugging Face</a>
+(Parquet, CC&nbsp;BY&nbsp;4.0).</p>
 <div class="cards">{cards}</div>
 {local_sec}
 {saas_sec}
