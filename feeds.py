@@ -42,7 +42,7 @@ MODELS_YAML = Path(os.environ.get(
 PLAYBOOKS_DIR = Path(os.environ.get("PLAYBOOKS_DIR", REPORTS_DIR.parent / "playbooks"))
 
 # Der Filter kommt aus privacy.py — hier steht bewusst keine zweite Fassung.
-EXCLUDE_PLAYBOOKS = privacy.EXCLUDE_PLAYBOOKS
+PUBLIC_PLAYBOOKS = privacy.PUBLIC_PLAYBOOKS
 _EXCLUDE_MODELS = privacy.EXCLUDE_MODELS
 
 PLAYBOOK_LABELS = {
@@ -270,7 +270,7 @@ def _load_run_rows(files: list[Path]) -> tuple[list[dict], int]:
         meta, summ, pbs = d.get("meta", {}), d.get("summary", {}), d.get("playbooks", {})
         total = err = 0
         for k, v in pbs.items():
-            if k in EXCLUDE_PLAYBOOKS or not isinstance(v, dict):
+            if k not in PUBLIC_PLAYBOOKS or not isinstance(v, dict):
                 continue
             for res in v.get("results", []):
                 total += 1
@@ -284,13 +284,13 @@ def _load_run_rows(files: list[Path]) -> tuple[list[dict], int]:
         if meta.get("source") == "saas_proxy":
             saas += 1
         pr = {k: v.get("pass_rate") for k, v in pbs.items()
-              if k not in EXCLUDE_PLAYBOOKS and isinstance(v, dict)}
+              if k in PUBLIC_PLAYBOOKS and isinstance(v, dict)}
         # Nur Aggregate je Playbook. 'results' und 'knockouts' bleiben liegen —
         # dort stehen Prompts, Modellantworten und Judge-Begruendungen.
         agg = {k: {"mean_score": v.get("mean_score"), "total": v.get("total"),
                    "passed": v.get("passed"), "knockouts": len(v.get("knockouts") or [])}
                for k, v in pbs.items()
-               if k not in EXCLUDE_PLAYBOOKS and isinstance(v, dict)}
+               if k in PUBLIC_PLAYBOOKS and isinstance(v, dict)}
         rows.append({"model": name, "overall": summ.get("overall"), "pass_rate": summ.get("pass_rate"),
                      "ko": summ.get("knockouts", 0), "pb": pr, "stem": j.stem, "perf": _perf(pbs),
                      "profile": meta.get("profile", ""), "is_saas": meta.get("source") == "saas_proxy",
@@ -383,7 +383,7 @@ def scan_local_reports(run_dir) -> dict:
             continue
         total = err = 0
         for k, v in pbs.items():
-            if k in EXCLUDE_PLAYBOOKS or not isinstance(v, dict):
+            if k not in PUBLIC_PLAYBOOKS or not isinstance(v, dict):
                 continue
             for res in v.get("results", []):
                 total += 1
@@ -394,7 +394,7 @@ def scan_local_reports(run_dir) -> dict:
         if name in _EXCLUDE_MODELS:
             continue
         pr = {k: v.get("pass_rate") for k, v in pbs.items()
-              if k not in EXCLUDE_PLAYBOOKS and isinstance(v, dict)}
+              if k in PUBLIC_PLAYBOOKS and isinstance(v, dict)}
         out[name] = {"stem": j.stem, "err_rate": rate, "valid": total > 0 and rate <= 0.3,
                      "pass_rate": summ.get("pass_rate"), "overall": summ.get("overall"),
                      "ko": summ.get("knockouts", 0), "pb": pr, "perf": _perf(pbs),
