@@ -146,7 +146,15 @@ def _runs_jsonl(alle: dict[str, list[feeds.Messlauf]]) -> list[dict]:
                              if lauf.hardware == feeds.HARDWARE_LOKAL
                              else {"name": "SaaS API", "note": "Anbieter-Infrastruktur, "
                                    "Durchsatz und TTFT messen Cloud und Netzweg"}),
-                "serving": {"stack": lauf.served_by, "version": None},
+                # version als Zeichenkette, "" = nicht protokolliert. Nicht null:
+                # waeren alle Zeilen null, leitete pyarrow den Typ 'null' ab, und
+                # die Spalte wechselte auf 'string', sobald der erste Lauf eine
+                # Version mitschreibt — ein Schemabruch zwischen zwei Versionen
+                # desselben Datensatzes. version_recorded sagt unmissverstaendlich,
+                # dass "" eine Luecke ist und keine leere Angabe; dieselbe
+                # Schreibweise wie recorded_in_run beim Judge.
+                "serving": {"stack": lauf.served_by, "version": "",
+                            "version_recorded": False},
                 "judge": lauf.judge,
                 "instruments": lauf.instrumente,
                 "excluded": sorted(privacy.EXCLUDE_PLAYBOOKS) if config.startswith("llm") else [],

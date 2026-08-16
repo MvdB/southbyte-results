@@ -7,5 +7,6 @@
     "image": 6,
     "tts": 16
   },
-  "url": "https://mvdb.github.io/southbyte-results/"
+  "url": "https://mvdb.github.io/southbyte-results/",
+  "dataset": "https://huggingface.co/datasets/southbyte/dgx-spark-eval"
 }

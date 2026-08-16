@@ -78,7 +78,12 @@ def hochladen(tag: str, trocken: bool) -> int:
     tk = token()
     from huggingface_hub import HfApi                       # erst jetzt: nur hier noetig
     api = HfApi(token=tk)
-    api.create_repo(REPO, repo_type="dataset", exist_ok=True)
+    # private=False ausdruecklich. Der Default der Bibliothek ist None, und das
+    # heisst nicht "oeffentlich", sondern "nimm die Voreinstellung des Accounts".
+    # Ein Datensatz, der versehentlich privat entsteht, laesst sich nur ueber die
+    # Weboberflaeche umstellen — dieselbe Falle wie bei der Paketsichtbarkeit auf
+    # GHCR, wo ein oeffentliches Repo die Pakete eben NICHT oeffentlich macht.
+    api.create_repo(REPO, repo_type="dataset", exist_ok=True, private=False)
     api.upload_folder(
         folder_path=str(QUELLE),
         repo_id=REPO,
