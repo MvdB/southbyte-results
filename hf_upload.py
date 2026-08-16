@@ -22,7 +22,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO = "southbyte/dgx-spark-eval"
+# Genau diese Schreibweise. Der Hub loest Organisationsnamen beim Lesen
+# case-insensitiv auf, /api/repos/create aber nicht: "southbyte" quittiert er
+# mit 403 "You don't have the rights to create a dataset under the namespace",
+# obwohl der Token Admin in der Org ist. Die Fehlermeldung nennt fehlende
+# Rechte, gemeint ist ein Namensraum, den es so nicht gibt.
+REPO = "SouthByte/dgx-spark-eval"
 QUELLE = Path(__file__).resolve().parent / "dist" / "dataset"
 HIER = Path(__file__).resolve().parent
 

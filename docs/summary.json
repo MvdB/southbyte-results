@@ -8,5 +8,5 @@
     "tts": 16
   },
   "url": "https://mvdb.github.io/southbyte-results/",
-  "dataset": "https://huggingface.co/datasets/southbyte/dgx-spark-eval"
+  "dataset": "https://huggingface.co/datasets/SouthByte/dgx-spark-eval"
 }

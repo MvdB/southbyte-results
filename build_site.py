@@ -47,7 +47,7 @@ LLM_URL = "https://mvdb.github.io/southbyte-vllm/"   # LLM + Guard Detail-Seiten
 # aus derselben Quelle wie diese Seite. Der Hub verlinkt ihn auf den
 # Modellseiten; die Rueckrichtung muss von hier kommen, sonst erfaehrt niemand,
 # der auf dieser Seite landet, dass es die Daten zum Herunterladen gibt.
-DATASET_URL = "https://huggingface.co/datasets/southbyte/dgx-spark-eval"
+DATASET_URL = "https://huggingface.co/datasets/SouthByte/dgx-spark-eval"
 
 
 # ── Render-Helfer ────────────────────────────────────────────────────────────
