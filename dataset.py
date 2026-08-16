@@ -45,7 +45,9 @@ import privacy
 
 ZIEL = Path(__file__).resolve().parent / "dist" / "dataset"
 HF_REPO = "SouthByte/dgx-spark-eval"      # Schreibweise wie auf dem Hub, s. hf_upload.py
-LIZENZ = "cc-by-4.0"
+LIZENZ = "cc-by-4.0"                      # Kennung fuers Frontmatter
+LIZENZ_NAME = "CC BY 4.0"                 # Schreibweise im Fliesstext, hier daneben,
+                                          # damit eine Aenderung beide Stellen trifft
 
 # Erwartete Zeilenzahlen. Sie stehen hier, damit ein stiller Ausfall auffaellt:
 # faellt ein Feed weg, baut der Emitter sonst klaglos eine kuerzere Tabelle.
@@ -339,16 +341,8 @@ führt ausschließlich Aggregate.
 
 ## Lizenz
 
-**{LIZENZ}** (CC BY 4.0) — Weitergabe und Bearbeitung mit Namensnennung,
+**{LIZENZ_NAME}** — Weitergabe und Bearbeitung mit Namensnennung,
 kommerzielle Nutzung eingeschlossen.
-
-An den einzelnen Messwerten besteht kaum Schutz; an Auswahl und Anordnung —
-welche Modelle, welche Playbooks, welche Rubriken — dagegen ein
-Datenbankherstellerrecht (§ 87a UrhG, sui generis). CC BY 4.0 lizenziert dieses
-Recht ausdrücklich mit. Die Freigabe ist damit eine bewusste Entscheidung und
-kein Versehen: zitierfähig zu sein — in Leaderboards, in Paper-Auswertungen, in
-Forschungspipelines — ist der Zweck dieser Veröffentlichung, und eine
-NC-Klausel würde genau das verhindern.
 
 Die Website unter <https://results.southbyte.de/> bleibt davon unberührt bei
 CC BY-NC 4.0. Modellnamen und Modellausgaben bleiben unter den Bedingungen
