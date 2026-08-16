@@ -21,7 +21,7 @@ import hashlib
 import html
 import json
 import re
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
 from feeds import (
@@ -376,15 +376,48 @@ def llm_local_chapter(local, roster, reports, running_prof) -> tuple[str, str]:
     return sec, c
 
 
+def mess_stand(*quellen) -> str:
+    """Juengstes Messdatum ueber alles, was auf der Seite steht.
+
+    Erwartet Zeichenketten, die mit YYYY-MM-DD beginnen — die Feeds tragen das
+    Datum durchgaengig vorn (meta.run '2026-08-08_1130', Bildlauf-Verzeichnis
+    '2026-08-11_1730_Mage-Flow', TTS-Suite '2026-07-30_suite_…', Guard-mtime).
+
+    Ausdruecklich NICHT date.today(). Vorher stand hier ein strptime auf dem
+    Verzeichnisnamen des Laufs mit genau diesem Rueckfall. Seit die lokale
+    Kohorte auf '2026-lokal-judge-claude-sonnet-5' gepinnt ist, traegt der Name
+    kein Datum mehr; das strptime schlug fehl und der Rueckfall setzte stumm
+    das Baudatum ein. Damit stand in docs/summary.json nicht, wann gemessen
+    wurde, sondern wann jemand den Build angeworfen hat — und jeder Lauf an
+    einem neuen Tag erzeugte einen Diff in einer Datei, an der sich nichts
+    geaendert hatte. Dieselbe Ueberlegung wie bei <lastmod> in write_seo.
+
+    Rueckfall ist feed_stand() (juengster mtime der Feeds), nicht das heutige
+    Datum: auch das ist eine Aussage ueber die Daten, keine ueber den Build.
+    """
+    stempel = []
+    for q in quellen:
+        for x in q or []:
+            m = re.match(r"(\d{4}-\d{2}-\d{2})", str(x or ""))
+            if m:
+                stempel.append(m.group(1))
+    return max(stempel) if stempel else feed_stand()
+
+
 def write_summary(run_id, llm_models, guard_models, image_models, tts_models=()) -> dict:
     """Schreibt docs/summary.json — die einzige Quelle für southbyte.de-Chips.
-    Bewusst knapp: nur Anzahlen + Datum, keine Modellnamen/Pass-Raten/Security."""
-    try:
-        run_date = datetime.strptime(run_id.split("_")[0], "%Y-%m-%d").date()
-    except (ValueError, AttributeError, IndexError):
-        run_date = date.today()
+    Bewusst knapp: nur Anzahlen + Datum, keine Modellnamen/Pass-Raten/Security.
+
+    'date' ist der Stand der Messungen, nicht der des Builds — siehe mess_stand.
+    """
+    run_date = mess_stand(
+        [r.get("meta_run") for r in llm_models],
+        [g.get("mtime") for g in guard_models],
+        [d.get("_run_dir") for d in image_models],
+        [t.get("run") for t in tts_models],
+    )
     payload = {
-        "run": run_id, "date": run_date.isoformat(),
+        "run": run_id, "date": run_date,
         "counts": {"llm": len(llm_models), "guard": len(guard_models),
                    "image": len(image_models), "tts": len(tts_models)},
         "url": "https://mvdb.github.io/southbyte-results/",
@@ -764,11 +797,16 @@ def main() -> int:
     runs = load_llm_runs()
     local = runs["local"] or {"run": None, "rows": []}
     saas = runs["saas"] or {"run": None, "rows": []}
-    # Neuestes Run-Datum (nicht SaaS-first): lokal ist i.d.R. der aktuellste Lauf.
-    cands = [r["run"] for r in (local, saas) if r.get("run")]
-    newest = max(cands, key=lambda s: s.split("_")[0]) if cands else "unknown"
+    # Kennung fuer die Chips: die lokale Kohorte ist der Hauptlauf, die
+    # SaaS-Kohorte nur ihr Referenzrahmen. Vorher entschied hier ein
+    # lexikalischer Vergleich der Verzeichnisnamen, der das Richtige nur aus
+    # Versehen traf — '2026-lokal-…' gewinnt gegen '2026-08-07_saas' allein
+    # durch das 'l' nach '2026-'. Und "neuester Lauf" waere er ohnehin nicht:
+    # die SaaS-Kohorte sammelt nachtraeglich Modelle ein und hat inzwischen die
+    # juengeren Messungen. Das Datum kommt deshalb aus den Messungen selbst.
+    lauf = local["run"] or saas["run"] or "unknown"
     # llm-Count = SaaS + lokal zusammen.
-    write_summary(newest, local["rows"] + saas["rows"], load_guards(), load_image(), load_tts())
+    write_summary(lauf, local["rows"] + saas["rows"], load_guards(), load_image(), load_tts())
     write_seo(seite)
     pruefe_metadaten(local["rows"], saas["rows"])
     return 0
