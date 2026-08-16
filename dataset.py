@@ -7,8 +7,9 @@
 
 Ausgabe:
     dist/dataset/data/{llm_local,llm_saas,guardrails,tts_de,t2i}.parquet
-    dist/dataset/runs.jsonl      eine Zeile je Messlauf
-    dist/dataset/README.md       Dataset-Card mit YAML-Frontmatter
+    dist/dataset/data/runs.parquet   Lauf-Metadaten, eine Zeile je Messlauf
+    dist/dataset/runs.jsonl          dieselben Zeilen, lesbar
+    dist/dataset/README.md           Dataset-Card mit YAML-Frontmatter
 
 Zwei Regeln bestimmen den Aufbau:
 
@@ -43,7 +44,7 @@ import hf_ids
 import privacy
 
 ZIEL = Path(__file__).resolve().parent / "dist" / "dataset"
-HF_REPO = "southbyte/dgx-spark-eval"
+HF_REPO = "SouthByte/dgx-spark-eval"      # Schreibweise wie auf dem Hub, s. hf_upload.py
 LIZENZ = "cc-by-4.0"
 
 # Erwartete Zeilenzahlen. Sie stehen hier, damit ein stiller Ausfall auffaellt:
@@ -124,7 +125,24 @@ def _tabelle(laeufe: list[feeds.Messlauf], spalten) -> pa.Table:
     return pa.Table.from_pydict(daten, schema=schema)
 
 
-def _runs_jsonl(alle: dict[str, list[feeds.Messlauf]]) -> list[dict]:
+def _judge_flach(judge: dict | None) -> dict | None:
+    """playbooks als Liste statt als Abbildung Playbook-Name -> Angaben.
+
+    Als Abbildung waeren die Playbook-Namen Teil des Schemas: das fuenfte
+    Playbook aendert dann die Struktur des Datensatzes, nicht nur seinen
+    Inhalt. Als Liste ist der Name ein Wert wie jeder andere, und Parquet
+    braucht keinen Map-Typ, den `datasets` nur halb unterstuetzt.
+    """
+    if judge is None:
+        return None
+    pb = judge.get("playbooks")
+    if not isinstance(pb, dict):
+        return judge
+    return {**judge, "playbooks": [{"playbook": name, **werte}
+                                   for name, werte in sorted(pb.items())]}
+
+
+def _runs(alle: dict[str, list[feeds.Messlauf]]) -> list[dict]:
     """Lauf-Metadaten, eine Zeile je Messlauf, 1:1 auf die Metrikzeilen.
 
     Hier und nur hier steht, WIE bewertet wurde: Judge-Modell, Prompt-Version,
@@ -155,11 +173,32 @@ def _runs_jsonl(alle: dict[str, list[feeds.Messlauf]]) -> list[dict]:
                 # Schreibweise wie recorded_in_run beim Judge.
                 "serving": {"stack": lauf.served_by, "version": "",
                             "version_recorded": False},
-                "judge": lauf.judge,
+                "judge": _judge_flach(lauf.judge),
                 "instruments": lauf.instrumente,
                 "excluded": sorted(privacy.EXCLUDE_PLAYBOOKS) if config.startswith("llm") else [],
             })
     return out
+
+
+# Ausdrueckliches Schema aus demselben Grund wie bei den Metriktabellen: aus den
+# Zeilen abgeleitet bekaeme ein Feld, das gerade ueberall leer ist, den Typ
+# 'null' und wechselte auf 'string', sobald der erste Lauf einen Wert liefert.
+_HW = pa.struct([("name", _S), ("soc", _S), ("arch", _S), ("memory_gb", _I),
+                 ("cpu_arch", _S), ("note", _S)])
+_PB = pa.list_(pa.struct([("playbook", _S), ("prompt_version", _S),
+                          ("prompt_sha256", _S), ("rubric_url", _S)]))
+RUNS_SCHEMA = pa.schema([
+    ("run_id", _S), ("config", _S), ("entity", _S), ("model_id", _S),
+    ("measured_at", _S), ("valid", _B),
+    ("hardware", _HW),
+    ("serving", pa.struct([("stack", _S), ("version", _S), ("version_recorded", _B)])),
+    ("judge", pa.struct([("model", _S), ("temperature", _F), ("recorded_in_run", _B),
+                         ("reason", _S), ("note", _S), ("playbooks", _PB)])),
+    ("instruments", pa.struct([("asr_whisper", _S), ("asr_voxtral", _S), ("protocol", _S),
+                               ("testset", _S), ("n_repeats", _I), ("ocr_model", _S),
+                               ("ocr_recorded_in_run", _B)])),
+    ("excluded", pa.list_(_S)),
+])
 
 
 # ── Dataset-Card ─────────────────────────────────────────────────────────────
@@ -169,7 +208,7 @@ def _frontmatter() -> str:
         configs.append(f"- config_name: {name}\n  data_files:\n"
                        f"  - split: train\n    path: data/{name}.parquet")
     configs.append("- config_name: runs\n  data_files:\n"
-                   "  - split: train\n    path: runs.jsonl")
+                   "  - split: train\n    path: data/runs.parquet")
     return (
         "---\n"
         f"license: {LIZENZ}\n"
@@ -209,6 +248,10 @@ Die Website zu denselben Daten: <https://results.southbyte.de/>
 
 `llm_local` und `llm_saas` haben **dasselbe Schema**, damit lokal gegen SaaS
 ohne Umbau vergleichbar bleibt.
+
+`runs` liegt zusätzlich als `runs.jsonl` im Wurzelverzeichnis — zeilengleich zu
+`data/runs.parquet`, aus derselben Quelle geschrieben. Wer `jq` benutzt, nimmt
+die JSONL; der Viewer und `load_dataset` nehmen die Parquet.
 
 ## Auf welcher Hardware
 
@@ -372,6 +415,10 @@ def pruefe_artefakte(ordner: Path) -> int:
                 treffer += 1
                 print(f"  ✗ {p.name}: {was} — {m.group(0)[:40]!r}")
     # Parquet getrennt: dort steht Text in den Spalten, nicht in der Datei.
+    # Die verschachtelten Spalten von runs.parquet ueberspringt die Schleife —
+    # sie sind zeichengleich mit runs.jsonl, und die hat der Textlauf oben
+    # vollstaendig gelesen. Faellt die JSONL je weg, muss das hier rekursiv
+    # werden.
     for p in sorted((ordner / "data").glob("*.parquet")):
         t = pq.read_table(p)
         for spalte in t.schema.names:
@@ -408,10 +455,19 @@ def emit_dataset(ziel: Path = ZIEL) -> dict:
         print(f"{zeichen} data/{name}.parquet  {t.num_rows} Zeilen × "
               f"{t.num_columns} Spalten" + (f"  (erwartet {soll})" if soll else ""))
 
-    runs = _runs_jsonl(alle)
+    runs = _runs(alle)
     (ziel / "runs.jsonl").write_text(
         "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in runs), encoding="utf-8")
-    print(f"{'✓' if len(runs) == sum(zaehler.values()) else '✗'} runs.jsonl  "
+    # Dieselben Zeilen zusaetzlich als Parquet. Nicht aus Vorliebe, sondern weil
+    # `datasets` den Builder einmal fuers ganze Repo aus den Dateiendungen
+    # ableitet: gegen fuenf Parquet-Dateien verliert die eine JSONL, und der
+    # Viewer versucht sie als Parquet zu lesen und meldet die Config als
+    # fehlerhaft. Die JSONL bleibt trotzdem liegen — fuer jq und fuers Auge ist
+    # sie das bessere Format, und beide entstehen aus derselben Liste.
+    rt = pa.Table.from_pylist(runs, schema=RUNS_SCHEMA)
+    pq.write_table(rt, ziel / "data" / "runs.parquet", compression="zstd")
+    stimmig = len(runs) == sum(zaehler.values()) == rt.num_rows
+    print(f"{'✓' if stimmig else '✗'} runs.jsonl + data/runs.parquet  "
           f"{len(runs)} Zeilen  (Summe der Configs: {sum(zaehler.values())})")
 
     # HF-IDs pruefen — model_id UND base_model_id, weil der Hub beide verlinkt.

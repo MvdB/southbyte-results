@@ -124,7 +124,7 @@ is the only address in the sitemap and in `<link rel="canonical">`.
 - **Content & data on this site** (metrics, testsets, generated-image gallery,
   write-ups): [**CC BY-NC 4.0**](https://creativecommons.org/licenses/by-nc/4.0/)
   — share/adapt with attribution, non-commercial.
-- **The Hugging Face dataset** (`southbyte/dgx-spark-eval`):
+- **The Hugging Face dataset** (`SouthByte/dgx-spark-eval`):
   [**CC BY 4.0**](https://creativecommons.org/licenses/by/4.0/) — deliberately
   not NC. The individual measurements carry little protection, but the selection
   and arrangement do: an EU database right (§ 87a UrhG, sui generis), which
