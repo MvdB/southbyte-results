@@ -51,7 +51,11 @@ LIZENZ_NAME = "CC BY 4.0"                 # Schreibweise im Fliesstext, hier dan
 
 # Erwartete Zeilenzahlen. Sie stehen hier, damit ein stiller Ausfall auffaellt:
 # faellt ein Feed weg, baut der Emitter sonst klaglos eine kuerzere Tabelle.
-ERWARTET = {"llm_local": 18, "llm_saas": 28, "guardrails": 5, "tts_de": 16, "t2i": 6}
+# 2026-08-17: llm_local von 18 auf 20 — Muse-Glimmer-30B-NVFP4-DFlash (derselbe
+# Checkpoint mit Spekulation, als eigener Eintrag neben dem ohne) und
+# Qwen3.8-27B-FP8 kamen dazu. Nemotron-3-Nano-30B und Nemotron-3-Super wurden
+# ersetzt, nicht ergaenzt: beide liefen neu auf vLLM v0.27.1.
+ERWARTET = {"llm_local": 20, "llm_saas": 28, "guardrails": 5, "tts_de": 16, "t2i": 6}
 
 _S, _F, _I, _B, _D = pa.string(), pa.float64(), pa.int32(), pa.bool_(), pa.date32()
 
@@ -166,15 +170,20 @@ def _runs(alle: dict[str, list[feeds.Messlauf]]) -> list[dict]:
                              if lauf.hardware == feeds.HARDWARE_LOKAL
                              else {"name": "SaaS API", "note": "Anbieter-Infrastruktur, "
                                    "Durchsatz und TTFT messen Cloud und Netzweg"}),
-                # version als Zeichenkette, "" = nicht protokolliert. Nicht null:
-                # waeren alle Zeilen null, leitete pyarrow den Typ 'null' ab, und
-                # die Spalte wechselte auf 'string', sobald der erste Lauf eine
-                # Version mitschreibt — ein Schemabruch zwischen zwei Versionen
-                # desselben Datensatzes. version_recorded sagt unmissverstaendlich,
-                # dass "" eine Luecke ist und keine leere Angabe; dieselbe
-                # Schreibweise wie recorded_in_run beim Judge.
-                "serving": {"stack": lauf.served_by, "version": "",
-                            "version_recorded": False},
+                # version als Zeichenkette, "" heisst "nicht bestimmbar". Nicht
+                # null: waeren alle Zeilen null, leitete pyarrow den Typ 'null'
+                # ab, und die Spalte wechselte auf 'string', sobald der erste
+                # Lauf eine Version mitbringt — ein Schemabruch zwischen zwei
+                # Versionen desselben Datensatzes.
+                #
+                # version_source ist die eigentliche Angabe: "profile_tag" heisst
+                # aus dem Profil zugeschrieben, nicht im Lauf gemessen. Der
+                # Bericht protokolliert keine Version; die lokalen Laeufe stammen
+                # alle aus 2026-08 und damit aus der Zeit dieser Profile.
+                "serving": ({"stack": lauf.served_by, **feeds.serving_stand(lauf.served_model_ref)}
+                            if lauf.served_by == "vllm"
+                            else {"stack": lauf.served_by, "image": "", "version": "",
+                                  "version_source": "kein_vllm"}),
                 "judge": _judge_flach(lauf.judge),
                 "instruments": lauf.instrumente,
                 "excluded": sorted(privacy.GESPERRTE_PLAYBOOKS) if config.startswith("llm") else [],
@@ -193,7 +202,8 @@ RUNS_SCHEMA = pa.schema([
     ("run_id", _S), ("config", _S), ("entity", _S), ("model_id", _S),
     ("measured_at", _S), ("valid", _B),
     ("hardware", _HW),
-    ("serving", pa.struct([("stack", _S), ("version", _S), ("version_recorded", _B)])),
+    ("serving", pa.struct([("stack", _S), ("image", _S), ("version", _S),
+                           ("version_source", _S)])),
     ("judge", pa.struct([("model", _S), ("temperature", _F), ("recorded_in_run", _B),
                          ("reason", _S), ("note", _S), ("playbooks", _PB)])),
     ("instruments", pa.struct([("asr_whisper", _S), ("asr_voxtral", _S), ("protocol", _S),
@@ -319,10 +329,15 @@ sollte wissen, wo sie dünn sind:
 - **`model_revision` ist der Stand des lokalen Modellspeichers**, nicht
   nachweislich der zum Messzeitpunkt. Wurde ein Modell nach dem Lauf neu
   synchronisiert, weicht der SHA ab.
-- **Die vLLM-Version ist nicht protokolliert** — `serving.version_recorded:
-  false`, `serving.version` ist leer. Die Läufe erstrecken sich über mehrere
-  Wochen; ein Versionswechsel dazwischen ist möglich und wäre in den Daten
-  nicht sichtbar.
+- **Die vLLM-Version ist zugeschrieben, nicht gemessen.** Der Lauf protokolliert
+  sie nicht; `serving.version` stammt aus dem Serving-Profil des Modells, so wie
+  es heute dasteht. `serving.version_source` sagt woher: `profile_tag` ist die
+  Zuschreibung, `runner_default` heißt, das Profil setzt kein Image und der
+  Standard-Tag des Runners galt, `unbestimmt` steht bei Codenamen und wandernden
+  Tags (`muse-glimmer`, `latest-arm64`) — dort ist nur `serving.image` gefüllt.
+  Die lokalen Läufe stammen alle aus 2026-08 und damit aus der Zeit dieser
+  Profile; ein Profil, das seither geändert wurde, würde die Zuschreibung
+  trotzdem verfälschen.
 - **Bei `t2i` ist das Judge-Modell nicht mitgeschrieben worden.** In
   `runs.jsonl` steht `judge.recorded_in_run: false` — der Wert ist aus dem
   Default der Auswertung rekonstruiert, nicht belegt.
