@@ -40,6 +40,11 @@ REPORTS_DIR = Path(os.environ.get("REPORTS_DIR", HOME / "southbyte/southbyte-vll
 MODELS_YAML = Path(os.environ.get(
     "MODELS_YAML", HOME / "southbyte/southbyte-vllm/testplan/config/models.yaml"))
 PLAYBOOKS_DIR = Path(os.environ.get("PLAYBOOKS_DIR", REPORTS_DIR.parent / "playbooks"))
+MODELL_SPEICHER = Path(os.environ.get("HF_MODELS_DIR", HOME / "hf_models"))
+
+# Standard-Tag des Runners (vllm_spark.sh: DEFAULT_VLLM_TAG). Wer kein
+# PROFILE_DOCKER_IMAGE setzt, laeuft darauf.
+RUNNER_STANDARD_IMAGE = "vllm/vllm-openai:v0.26.0"
 
 # Der Filter kommt aus privacy.py — hier steht bewusst keine zweite Fassung.
 PUBLIC_PLAYBOOKS = privacy.PUBLIC_PLAYBOOKS
@@ -477,6 +482,58 @@ def _judge_prompt_block(pfad: Path) -> str:
     return "\n".join(raus).rstrip()
 
 
+# Lokal gebaute Serving-Varianten: dasselbe Gewicht, andere vLLM-Schalter. Sie
+# brauchen ein eigenes Profilverzeichnis, weil der Orchestrator die Argumente
+# ausschliesslich ueber das Profil setzt — auf dem Hub existieren sie nicht.
+# Ohne diese Aufloesung machte kanonisch() aus dem Verzeichnisnamen eine ID, die
+# 404 liefert: ein toter Link auf der Seite und eine unaufloesbare model_id im
+# Datensatz. Der Zusatz gehoert an den Modellnamen, nicht an die Repo-ID.
+VARIANTEN_SUFFIXE = ("-DFlash", "-DSpark", "-MTP")
+
+
+def lokale_variante_aufloesen(profil: str) -> str:
+    """Serving-Variante auf das echte Repo zurueckfuehren."""
+    for s in VARIANTEN_SUFFIXE:
+        if profil.endswith(s):
+            return profil[: -len(s)]
+    return profil
+
+
+def serving_stand(profil: str) -> dict:
+    """Womit wurde serviert — Image-Tag und, wenn ableitbar, die vLLM-Version.
+
+    Quelle ist das Profil im Modellverzeichnis, denn genau das liest der Runner
+    (vllm_spark.sh sourct ~/hf_models/<profil>/vllm_profile.conf). Die kuratierte
+    Fassung in southbyte-spark-profiles ist der Stammbaum, nicht die Laufzeit —
+    sie weicht an einzelnen Stellen ab. Setzt das Profil kein Image, greift der
+    Standard-Tag des Runners.
+
+    Die Version wird ZUGESCHRIEBEN, nicht gemessen: sie steht so heute im Profil,
+    und die lokalen Laeufe stammen alle aus 2026-08 mit diesen Einstellungen. Der
+    Bericht selbst protokolliert keine Version. `version_source` sagt das offen —
+    "profile_tag" ist keine Messung, und ein Codename wie `muse-glimmer` oder ein
+    wandernder Tag wie `latest-arm64` ist ueberhaupt keine Version; dort bleibt
+    `version` leer und nur `image` gefuellt.
+    """
+    bild = ""
+    # Serving-Varianten teilen sich die Gewichte und das Image mit ihrem Original;
+    # ihr Verzeichnis ist ein lokales Konstrukt und kann laengst aufgeraeumt sein.
+    # Ohne diese Aufloesung faellt die Funktion auf den Standard-Tag zurueck und
+    # schreibt eine Version, auf der der Lauf nie stattgefunden hat.
+    pfad = MODELL_SPEICHER / lokale_variante_aufloesen(profil) / "vllm_profile.conf"
+    try:
+        m = re.search(r"^PROFILE_DOCKER_IMAGE='([^']+)'", pfad.read_text(encoding="utf-8"), re.M)
+        if m:
+            bild, quelle = m.group(1), "profile_tag"
+    except OSError:
+        pass
+    if not bild:
+        bild, quelle = RUNNER_STANDARD_IMAGE, "runner_default"
+    tag = bild.rsplit(":", 1)[-1]
+    version = tag.lstrip("v") if re.fullmatch(r"v?\d+\.\d+(\.\d+)?", tag) else ""
+    return {"image": bild, "version": version, "version_source": quelle if version else "unbestimmt"}
+
+
 def judge_provenienz(judge_modell: str) -> dict:
     """Judge-Modell, Prompt-Version, Prompt-Hash und Rubrik-URL je Playbook.
 
@@ -561,7 +618,7 @@ def _llm_messlauf(r: dict, config: str) -> Messlauf:
         model_id = basis
         ref = profil or r["model"]
     else:
-        model_id = hf_ids.kanonisch(profil)
+        model_id = hf_ids.kanonisch(lokale_variante_aufloesen(profil))
         ref = profil or r["model"]
     lauf = str(r.get("meta_run") or "")
     datum = (re.match(r"(\d{4}-\d{2}-\d{2})", lauf) or [None, None])[1] or feed_stand()
