@@ -9,7 +9,9 @@ bewusst getrennt gefuehrt, weil sie unterschiedlich altern:
                      config/testplan.yaml in southbyte-vllm — dort, wo die
                      Playbooks definiert sind. Siehe unten.
   EXCLUDE_MODELS     Kuratierung. Modelle, die aus der Kohorte genommen wurden.
-                     Diese Liste waechst und schrumpft mit dem Testplan.
+                     Steht ebenfalls in config/testplan.yaml, als `publish: false`
+                     am Modelleintrag — dort, wo auch beschlossen wird, welches
+                     Modell ueberhaupt laeuft.
   RAW_FIELDS         Rohdaten-Felder. Prompts, Modellantworten, Judge-Begruendungen
                      und ASR-Transkripte liegen in den Feeds; kuratierte
                      Kennzahlen duerfen raus, die Rohtexte nicht.
@@ -21,8 +23,9 @@ etwas durchrutscht: die eine Stelle wird gepflegt, die Kopie nicht.
 Genau das war bei den Playbooks der Fall: dieselbe Liste stand hier und in
 southbyte-vllm/testplan/make_public_site.py. Aufgeloest, indem die Freigabe
 dorthin gewandert ist, wo die Playbooks stehen — als `publish:` je Eintrag in
-config/testplan.yaml. Beide Generatoren lesen sie von dort. EXCLUDE_MODELS
-liegt weiterhin doppelt; das ist Kuratierung und kein Datenschutz, aber offen.
+config/testplan.yaml. Beide Generatoren lesen sie von dort. Am 2026-08-17 ist
+EXCLUDE_MODELS denselben Weg gegangen; seitdem steht keine dieser Listen mehr
+zweimal.
 """
 from __future__ import annotations
 
@@ -77,15 +80,32 @@ def _lies_playbooks() -> tuple[frozenset[str], frozenset[str]]:
 PUBLIC_PLAYBOOKS, GESPERRTE_PLAYBOOKS = _lies_playbooks()
 
 # ── Kuratierung: aus der Kohorte genommen ────────────────────────────────────
-# Der laufende Orchestrator testet manche davon noch (Snapshot beim Start), und
-# alte Reports liegen weiter im reports-Verzeichnis. Ohne diese Liste holt ein
-# Altbericht ein aussortiertes Modell versehentlich zurueck auf die Seite.
-EXCLUDE_MODELS = frozenset({
-    "Qwen-AgentWorld-35B-A3B",
-    "DiffusionGemma-26B-A4B",
-    "Mistral-Medium-3.5-128B-NVFP4",
-    "Nemotron-3-Nano-Omni-30B",
-})
+# Steht als `publish: false` am Modelleintrag in derselben testplan.yaml wie die
+# Playbook-Freigabe. Der laufende Orchestrator testet manche dieser Modelle noch
+# (Snapshot beim Start), und alte Berichte liegen weiter im reports-Verzeichnis;
+# ohne diese Liste holt ein Altbericht ein aussortiertes Modell versehentlich
+# zurueck auf die Seite.
+#
+# Hier eine SPERR-, bei den Playbooks eine POSITIVliste — die Asymmetrie ist
+# gewollt: Playbooks sind eine Handvoll und ihr Fehlerfall ist eine
+# Datenschutzpanne, Modelle sind neunzig und ihr Fehlerfall ist eine veraltete
+# Tabellenzeile. Eine Positivliste muesste hier neunzig Eintraege pflegen und
+# wuerde jedes neue Modell stillschweigend verschlucken.
+def _gesperrte_modelle() -> frozenset[str]:
+    """Modelle mit `publish: false` aus config/testplan.yaml."""
+    try:
+        txt = TESTPLAN_YAML.read_text(encoding="utf-8")
+    except OSError as e:
+        raise RuntimeError(
+            f"{TESTPLAN_YAML} nicht lesbar ({e.strerror}). Dort steht, welches Modell "
+            "aus der Kohorte genommen wurde; ohne die Datei wird nichts gebaut.") from e
+    return frozenset(
+        b.splitlines()[0].strip().strip("\"'")
+        for b in re.split(r"\n\s*-\s+name:\s*", txt)[1:]
+        if re.search(r"\n\s*profile:", b) and re.search(r"\n\s*publish:\s*false\b", b))
+
+
+EXCLUDE_MODELS = _gesperrte_modelle()
 
 # ── Rohdaten: Felder, die nie in ein Artefakt geschrieben werden ─────────────
 # Namentlich gefuehrt statt implizit vermieden. Der Emitter soll nicht davon
