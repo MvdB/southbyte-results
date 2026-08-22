@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- inhalt-sha256: 39e16552f42f4ba2 — haelt das Datum unten stabil,
+<!-- inhalt-sha256: 11118a7744a591fb — haelt das Datum unten stabil,
      solange sich die Seite nicht aendert. Nicht von Hand bearbeiten. -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://results.southbyte.de/</loc>
-    <lastmod>2026-08-21</lastmod>
+    <lastmod>2026-08-22</lastmod>
     <changefreq>weekly</changefreq>
   </url>
 </urlset>
