@@ -375,7 +375,10 @@ def llm_local_chapter(local, roster, reports, running_prof) -> tuple[str, str]:
            f'<p>Auf dem GB10 selbst serviert (vLLM), Judge-bewertet. <strong>Vollständiges '
            f'Kohorten-Roster</strong> — jedes geplante Modell mit Status. '
            f'{len(rows)} Modelle ({legend}). <strong>Gültige Modelle anklicken</strong> → Detail auf '
-           f'<a href="{LLM_URL}">southbyte-vllm</a>. <strong>Sicherheit (04) ausgeschlossen</strong>.</p>\n'
+           f'<a href="{LLM_URL}">southbyte-vllm</a>. Von <strong>Sicherheit (04)</strong> stehen '
+           f'nur Scores in der Matrix, keine Prompts und keine Antworten.</p>\n'
+           f'<p>Alle Einzelurteile auf einen Blick: <a href="matrix.html"><strong>Testfall-Matrix</strong></a> '
+           f'— jeder Testfall gegen jedes Modell, Score je Zelle.</p>\n'
            f'<div style="overflow-x:auto">{tbl}</div>')
     c = card("LLM lokal", f'{n_valid}/{len(rows)}', "gültig · volles Roster", "#llm-local")
     return sec, c
@@ -435,7 +438,7 @@ def write_summary(run_id, llm_models, guard_models, image_models, tts_models=())
     return payload
 
 
-def write_seo(seite: str) -> None:
+def write_seo(seite: str, matrix: str | None = None) -> None:
     """Schreibt docs/sitemap.xml und docs/robots.txt.
 
     Beides wird mitgebaut statt von Hand gepflegt, damit <lastmod> nicht
@@ -448,13 +451,18 @@ def write_seo(seite: str) -> None:
     und behaelt bei gleichem Hash ihr altes Datum. Erst geaenderter Inhalt
     setzt das Datum neu.
 
-    Die Sitemap enthaelt bewusst nur eine URL. Der Hub ist eine einzige Seite;
-    die Detailseiten liegen auf mvdb.github.io und damit auf einer anderen
-    Domain — fremde Hosts duerfen in einer Sitemap nicht auftauchen. Wenn die
-    Detail-Repos indexiert werden sollen, brauchen sie eine eigene.
+    In der Sitemap stehen nur Seiten DIESER Domain: der Hub und, seit es sie
+    gibt, die Testfall-Matrix. Die Detailseiten je Modell liegen auf
+    mvdb.github.io und damit auf einer anderen Domain — fremde Hosts duerfen in
+    einer Sitemap nicht auftauchen. Wenn die Detail-Repos indexiert werden
+    sollen, brauchen sie eine eigene.
+
+    Jede Seite traegt ihren eigenen Hash und damit ihr eigenes lastmod: sonst
+    springt das Datum der einen hoch, weil sich die andere geaendert hat.
     """
     ziel = DOCS / "sitemap.xml"
-    inhalt_hash = hashlib.sha256(seite.encode("utf-8")).hexdigest()[:16]
+    seiten = [("", seite)] + ([("matrix.html", matrix)] if matrix else [])
+    inhalt_hash = hashlib.sha256("".join(s for _, s in seiten).encode("utf-8")).hexdigest()[:16]
     stand = date.today().isoformat()
     if ziel.exists():
         alt = ziel.read_text(encoding="utf-8")
@@ -467,12 +475,13 @@ def write_seo(seite: str) -> None:
         f"<!-- inhalt-sha256: {inhalt_hash} — haelt das Datum unten stabil,\n"
         "     solange sich die Seite nicht aendert. Nicht von Hand bearbeiten. -->\n"
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-        "  <url>\n"
-        f"    <loc>{SITE_URL}</loc>\n"
-        f"    <lastmod>{stand}</lastmod>\n"
-        "    <changefreq>weekly</changefreq>\n"
-        "  </url>\n"
-        "</urlset>\n",
+        + "".join(
+            "  <url>\n"
+            f"    <loc>{SITE_URL}{pfad}</loc>\n"
+            f"    <lastmod>{stand}</lastmod>\n"
+            "    <changefreq>weekly</changefreq>\n"
+            "  </url>\n" for pfad, _ in seiten)
+        + "</urlset>\n",
         encoding="utf-8",
     )
     # Kein Disallow: die Seite ist als Ganzes zur Veroeffentlichung gebaut,
@@ -675,6 +684,239 @@ def jsonld(local, saas, guards, tts, imgs) -> str:
     return f'<script type="application/ld+json">\n{roh}\n</script>'
 
 
+# Web-CI der Seite (southbyte-brand): Dark-Theme, Matrix-Grid, Wortmarke.
+# Als Konstante statt inline im f-String, seit es mehr als eine Seite gibt.
+CI_CSS = """ :root{--bg:#060C0A;--bg-raised:#0A1410;--bg-card:#0E1A14;--border:#162A1E;--border-hi:#1A5C38;
+   --green:#00E676;--green-dim:#00994A;--amber:#F59E0B;--text:#D4EDE0;--text-muted:#5E8A72;--text-dim:#2E5040;
+   --ko:#FF5A5A;--mono:'Courier New',Consolas,'Cascadia Code','SF Mono',Menlo,monospace;
+   --sans:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+ *{box-sizing:border-box}
+ body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.75}
+ .grid-bg{position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;
+   background-image:linear-gradient(rgba(0,230,118,.15) 1px,transparent 1px),
+     linear-gradient(90deg,rgba(0,230,118,.15) 1px,transparent 1px);background-size:80px 80px}
+ .wrap{position:relative;z-index:1;max-width:1200px;margin:0 auto;padding:2.5rem 1.25rem}
+ .wordmark{font-family:var(--mono);font-weight:700;font-size:1.5rem;letter-spacing:1.4px;color:var(--text)}
+ .wordmark .dot{color:var(--green)}
+ .tagline{font-family:var(--mono);font-size:.7rem;letter-spacing:.25em;text-transform:uppercase;
+   color:var(--text-muted);margin-top:.3rem}
+ h1{font-family:var(--mono);font-size:1.9rem;margin:1.6rem 0 .3rem;color:var(--text)}
+ .lede{color:var(--text-muted);margin:0 0 1.5rem;max-width:62ch}
+ .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin:1.5rem 0}
+ .card{border:1px solid var(--border);border-radius:10px;padding:1rem;background:var(--bg-card)}
+ .card h3{margin:0 0 .5rem;font-family:var(--mono);font-size:.72rem;color:var(--text-muted);
+   text-transform:uppercase;letter-spacing:.1em}
+ .card .big{font-size:1.8rem;font-weight:700;color:var(--text)} .card .sub{color:var(--text-muted);font-size:.85rem}
+ .card a{text-decoration:none;color:inherit} .card a:hover .big{color:var(--green)}
+ h2{font-family:var(--mono);text-transform:uppercase;letter-spacing:.15em;color:var(--green);font-size:1.05rem;
+   margin-top:2.4rem;padding-top:.8rem;border-top:1px solid var(--border-hi)}
+ table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.9rem}
+ th,td{border:1px solid var(--border);padding:.45rem .6rem;text-align:center}
+ th{font-family:var(--mono);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;
+   color:var(--text-muted);background:var(--bg-raised)}
+ th:first-child,td:first-child{text-align:left} tbody tr:hover{background:var(--bg-raised)}
+ code{font-family:var(--mono);color:var(--green);background:var(--bg-card);padding:.05em .35em;border-radius:4px}
+ a{color:var(--green)} a:hover{color:var(--green-dim)} strong{color:var(--text)}
+ .ko{color:var(--ko);font-weight:600} .empty,.note{color:var(--text-muted);font-size:.9rem}
+ tr.st-degraded td:first-child,tr.st-pending td:first-child,tr.st-na td:first-child{color:var(--text-muted)}
+ footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--border);color:var(--text-muted);font-size:.82rem}
+ footer .wm{font-family:var(--mono);font-weight:700;letter-spacing:1px;color:var(--text)}
+ footer .wm .dot{color:var(--green)}__SORT_CSS__
+ @keyframes scanline{0%{transform:translateY(-100vh)}100%{transform:translateY(100vh)}}
+ .scanline{position:fixed;left:0;top:0;width:100%;height:80px;background:linear-gradient(to bottom,transparent,rgba(0,230,118,.03) 40%,rgba(0,230,118,.07) 50%,rgba(0,230,118,.03) 60%,transparent);pointer-events:none;z-index:0;animation:scanline 8s linear infinite;will-change:transform}
+ @media(prefers-reduced-motion:reduce){.scanline{display:none}}
+""".replace("__SORT_CSS__", SORT_CSS)
+
+
+
+# ── Testfall-Matrix ──────────────────────────────────────────────────────────
+# Eigene Seite auf derselben Domain. Sie zeigt ausschliesslich Fall-ID und
+# Score — deshalb duerfen die Faelle des Sicherheits-Playbooks hier erscheinen,
+# waehrend ihre Prompts und Antworten nirgends veroeffentlicht werden.
+MATRIX_PBS = ("01_quality", "02_german_language", "03_bias", "04_security", "05_code")
+MATRIX_LABELS = {**PLAYBOOK_LABELS, "04_security": "Sicherheit"}
+_VKURZ = {"pass": "p", "fail": "f", "warn": "w", "knockout": "k", "error": "e"}
+_VNAME = {"p": "bestanden", "f": "durchgefallen", "w": "Warnung",
+          "k": "K.O.", "e": "Fehler", "-": "nicht gelaufen"}
+
+MATRIX_CSS = (
+ " .mx-huelle{overflow:auto;max-height:76vh;border:1px solid var(--border);border-radius:8px;background:var(--bg-raised)}"
+ " table.mx{border-collapse:separate;border-spacing:0;font-family:var(--mono);font-size:.7rem}"
+ " table.mx th,table.mx td{padding:0;margin:0}"
+ " table.mx thead th{position:sticky;top:0;z-index:3;background:var(--bg-raised);vertical-align:bottom;border-bottom:1px solid var(--border)}"
+ " table.mx th.mname{height:148px;width:20px;padding-bottom:.3rem}"
+ " table.mx th.mname span{writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;color:var(--text-muted);font-size:.66rem;display:block;max-height:138px;overflow:hidden}"
+ " table.mx th.ecke{position:sticky;left:0;z-index:5;background:var(--bg-raised);text-align:left;padding:0 .7rem .3rem;color:var(--text-muted);font-size:.64rem;letter-spacing:.08em;text-transform:uppercase;border-right:1px solid var(--border)}"
+ " table.mx tbody th.fall{position:sticky;left:0;z-index:2;background:var(--bg-raised);text-align:left;padding:0 .7rem;white-space:nowrap;border-right:1px solid var(--border);font-weight:400;color:var(--text)}"
+ " table.mx tbody th.fall .q{color:var(--text-muted);margin-left:.5rem}"
+ " table.mx tbody tr:hover th.fall{background:var(--bg-card);color:var(--green)}"
+ " table.mx td.z{width:20px;height:20px;border:1px solid var(--bg);cursor:crosshair}"
+ " table.mx td.s0{background:#0D1712} table.mx td.s1{background:#123521} table.mx td.s2{background:#12522F}"
+ " table.mx td.s3{background:#0E7A42} table.mx td.s4{background:var(--green)}"
+ " table.mx td.ko{background-image:repeating-linear-gradient(45deg,transparent 0 3px,rgba(255,90,90,.85) 3px 5px);box-shadow:inset 0 0 0 1px var(--ko)}"
+ " table.mx td.err{background:var(--bg);box-shadow:inset 0 0 0 1px var(--text-dim)}"
+ " table.mx tr.pbkopf th{position:sticky;left:0;background:var(--bg-card);color:var(--green);text-align:left;padding:.35rem .7rem;font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;z-index:2}"
+ " .mx-regler{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;margin:.2rem 0 .9rem}"
+ " .mx-chip{font-family:var(--mono);font-size:.72rem;padding:.25rem .65rem;border-radius:999px;border:1px solid var(--border-hi);background:transparent;color:var(--text-muted);cursor:pointer}"
+ " .mx-chip:hover{color:var(--text)} .mx-chip[aria-pressed=true]{background:var(--green);color:#04120B;border-color:var(--green);font-weight:600}"
+ " .mx-chip:focus-visible{outline:2px solid var(--green);outline-offset:2px}"
+ " .mx-legende{display:flex;flex-wrap:wrap;gap:.35rem 1.2rem;align-items:center;font-family:var(--mono);font-size:.72rem;color:var(--text-muted);margin:.7rem 0 0}"
+ " .mx-legende .pr{display:inline-flex;align-items:center;gap:.4rem}"
+ " .mx-sw{width:13px;height:13px;border-radius:3px;border:1px solid var(--bg);flex:none}"
+ " .mx-sw.ko{background-image:repeating-linear-gradient(45deg,transparent 0 3px,rgba(255,90,90,.85) 3px 5px);box-shadow:inset 0 0 0 1px var(--ko)}"
+ " .mx-sw.err{background:var(--bg);box-shadow:inset 0 0 0 1px var(--text-dim)}"
+ " #mxtip{position:fixed;pointer-events:none;opacity:0;transition:opacity .1s;z-index:50;background:var(--bg-card);border:1px solid var(--border-hi);border-radius:6px;padding:.45rem .6rem;font-family:var(--mono);font-size:.72rem;line-height:1.5;max-width:250px}"
+ " #mxtip b{color:var(--green)}"
+)
+
+
+def matrix_daten(local) -> dict | None:
+    """Score je Testfall und Modell aus den Berichten der lokalen Kohorte.
+
+    Die Zeilen kommen aus load_llm_runs und sind bereits um die gesperrten
+    Modelle bereinigt; der Dateipfad wird aus Lauf und stem gebildet.
+    """
+    if not local or not local.get("rows"):
+        return None
+    lauf = REPORTS_DIR / local["run"]
+    modelle, zellen, gruppe = [], {}, {}
+    for r in local["rows"]:
+        datei = lauf / f'{r["stem"]}.json'
+        try:
+            d = json.loads(datei.read_text(encoding="utf-8"))
+        except OSError:
+            continue
+        modelle.append(r["model"])
+        for pb in MATRIX_PBS:
+            for e in d.get("playbooks", {}).get(pb, {}).get("results", []):
+                tid = e.get("test_id")
+                if not tid:
+                    continue
+                gruppe[tid] = pb
+                sc = e.get("score")
+                zellen.setdefault(tid, {})[r["model"]] = [
+                    round(sc * 100) if isinstance(sc, (int, float)) else None,
+                    _VKURZ.get((e.get("verdict") or "").lower(), "?")]
+    if not zellen:
+        return None
+
+    def quote(tid):
+        w = list(zellen[tid].values())
+        return sum(1 for _, v in w if v == "p") / len(w) if w else 0.0
+
+    # Innerhalb des Playbooks vom schwersten zum leichtesten Fall: so stehen die
+    # Zeilen oben, an denen fast jedes Modell scheitert.
+    faelle = sorted(zellen, key=lambda tid: (MATRIX_PBS.index(gruppe[tid]), quote(tid)))
+    return {"modelle": modelle,
+            "faelle": [{"id": tid, "pb": gruppe[tid], "quote": round(quote(tid) * 100),
+                        "zellen": [zellen[tid].get(m) or [None, "-"] for m in modelle]}
+                       for tid in faelle]}
+
+
+MATRIX_JS = """
+const MX = JSON.parse(document.getElementById('mxdaten').textContent);
+const MXL = __MXL__, MXV = __MXV__;
+let mxF = 'alle', mxH = false;
+function mxS(s){ return s === null ? 'err' : 's' + Math.min(4, Math.floor(s / 20)); }
+function mxBauen(){
+  const zeilen = MX.faelle.filter(f => (mxF === 'alle' || f.pb === mxF) && (!mxH || f.quote < 30));
+  let h = "<thead><tr><th class='ecke'>Testfall &middot; bestanden</th>";
+  for (const m of MX.modelle) h += "<th class='mname' title='" + m + "'><span>" + m + "</span></th>";
+  h += '</tr></thead><tbody>';
+  let letztes = null;
+  for (const f of zeilen){
+    if (f.pb !== letztes){
+      h += "<tr class='pbkopf'><th colspan='" + (MX.modelle.length + 1) + "'>" + (MXL[f.pb] || f.pb) + '</th></tr>';
+      letztes = f.pb;
+    }
+    h += "<tr><th class='fall'>" + f.id + "<span class='q'>" + f.quote + "&nbsp;%</span></th>";
+    f.zellen.forEach((z, i) => {
+      const kl = z[1] === 'k' ? 'ko' : (z[1] === 'e' || z[1] === '-') ? 'err' : mxS(z[0]);
+      h += "<td class='z " + kl + "' data-f='" + f.id + "' data-m='" + i + "' data-s='" +
+           (z[0] === null ? '&mdash;' : z[0]) + "' data-v='" + z[1] + "'></td>";
+    });
+    h += '</tr>';
+  }
+  document.getElementById('mxgitter').innerHTML = h + '</tbody>';
+}
+const mxT = document.getElementById('mxtip');
+document.addEventListener('mouseover', e => {
+  const z = e.target.closest('td.z');
+  if (!z){ mxT.style.opacity = 0; return; }
+  mxT.innerHTML = '<b>' + z.dataset.f + '</b><br>' + MX.modelle[+z.dataset.m] +
+                  '<br>Score ' + z.dataset.s + ' &middot; ' + (MXV[z.dataset.v] || z.dataset.v);
+  mxT.style.opacity = 1;
+});
+document.addEventListener('mousemove', e => {
+  mxT.style.left = Math.min(e.clientX + 14, innerWidth - 265) + 'px';
+  mxT.style.top = Math.min(e.clientY + 14, innerHeight - 90) + 'px';
+});
+document.getElementById('mxregler').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.id === 'mxhart'){ mxH = !mxH; b.setAttribute('aria-pressed', mxH); }
+  else {
+    mxF = b.dataset.pb;
+    document.querySelectorAll('#mxregler .mx-chip[data-pb]').forEach(c => c.setAttribute('aria-pressed', c === b));
+  }
+  mxBauen();
+});
+mxBauen();
+""".replace("__MXL__", json.dumps(MATRIX_LABELS, ensure_ascii=False)) \
+   .replace("__MXV__", json.dumps(_VNAME, ensure_ascii=False))
+
+
+def matrix_seite(local) -> str | None:
+    d = matrix_daten(local)
+    if not d:
+        return None
+    n_m, n_f = len(d["modelle"]), len(d["faelle"])
+    ko = sum(1 for f in d["faelle"] for _, v in f["zellen"] if v == "k")
+    chips = "".join(f'<button class="mx-chip" data-pb="{esc(pb)}" aria-pressed="false">'
+                    f'{esc(MATRIX_LABELS.get(pb, pb))}</button>' for pb in MATRIX_PBS)
+    legende = "".join(f'<span class="pr"><span class="mx-sw" style="background:{c}"></span>{l}</span>'
+                      for c, l in (("#0D1712", "0&ndash;20"), ("#123521", "20&ndash;40"),
+                                   ("#12522F", "40&ndash;60"), ("#0E7A42", "60&ndash;80"),
+                                   ("var(--green)", "80&ndash;100 &middot; Score")))
+    daten = json.dumps(d, ensure_ascii=False, separators=(",", ":"))
+    return f"""<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SOUTH.BYTE — Testfall-Matrix</title>
+<meta name="description" content="Jeder Testfall gegen jedes Modell: {n_f} Testf&auml;lle mal {n_m} Sprachmodelle auf einem NVIDIA DGX Spark (GB10), Score je Zelle. Gemessen mit eigenem Testsatz, Judge claude-sonnet-5.">
+<link rel="canonical" href="{SITE_URL}matrix.html">
+<style>
+{CI_CSS}
+{MATRIX_CSS}
+</style></head><body><div class="grid-bg"></div><div class="scanline"></div><div class="wrap">
+<header><a class="wordmark" href="./" style="text-decoration:none">SOUTH<span class="dot">.</span>BYTE</a>
+<div class="tagline">AI Governance &amp; IT-Beratung</div></header>
+<p><a href="./">&larr; zur&uuml;ck zu den Modell-Evaluationen</a></p>
+<h1>Testfall-Matrix</h1>
+<p class="lede">{n_f} Testf&auml;lle &times; {n_m} Modelle = {n_f * n_m} Zellen, davon {ko} K.O.
+Zeilen nach Playbook gruppiert und darin vom schwersten zum leichtesten Fall,
+Spalten vom st&auml;rksten zum schw&auml;chsten Modell. Ein K.O. ist zus&auml;tzlich
+schraffiert und h&auml;ngt damit nicht an der Farbe allein.</p>
+<p class="lede">Die Matrix zeigt nur Fall-Kennung und Score. Die F&auml;lle des
+Sicherheits-Playbooks erscheinen deshalb hier &mdash; ihre Prompts und Antworten
+werden nach wie vor nicht ver&ouml;ffentlicht.</p>
+<div class="mx-regler" id="mxregler">
+<button class="mx-chip" data-pb="alle" aria-pressed="true">alle</button>{chips}
+<button class="mx-chip" id="mxhart" aria-pressed="false">nur unter 30&nbsp;% Bestehensquote</button></div>
+<div class="mx-huelle"><table class="mx" id="mxgitter"></table></div>
+<div class="mx-legende">{legende}
+<span class="pr"><span class="mx-sw ko"></span>K.O.</span>
+<span class="pr"><span class="mx-sw err"></span>Fehler / nicht bewertet</span></div>
+<div id="mxtip"></div>
+<footer><span class="wm">SOUTH<span class="dot">.</span>BYTE</span> — Michael van den Berg &middot;
+Teil der <a href="https://github.com/MvdB?tab=repositories&amp;q=southbyte">southbyte</a>-Familie &middot;
+<a href="https://southbyte.de">southbyte.de</a> &middot;
+<a href="https://southbyte.de/impressum.html">Impressum</a></footer>
+<script id="mxdaten" type="application/json">{daten}</script>
+<script>{MATRIX_JS}</script>
+</div></body></html>
+"""
+
+
 def build() -> str:
     guards = load_guards()
     imgs = load_image()
@@ -708,46 +950,7 @@ def build() -> str:
 {ld}
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsPSJTb3V0aEJ5dGUiPgogIDx0aXRsZT5Tb3V0aEJ5dGU8L3RpdGxlPgogIDxyZWN0IHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgZmlsbD0iIzA2MEMwQSIvPgogIDx0ZXh0IHg9IjIiIHk9IjIzIgogICAgICAgIGZvbnQtZmFtaWx5PSInQ291cmllciBOZXcnLCBDb25zb2xhcywgJ1NGIE1vbm8nLCBtb25vc3BhY2UiCiAgICAgICAgZm9udC1zaXplPSIxNiIKICAgICAgICBmb250LXdlaWdodD0iNzAwIgogICAgICAgIGxldHRlci1zcGFjaW5nPSIwLjUiPgogICAgPHRzcGFuIGZpbGw9IiNENEVERTAiPlM8L3RzcGFuPjx0c3BhbiBmaWxsPSIjMDBFNjc2Ij4uPC90c3Bhbj48dHNwYW4gZmlsbD0iI0Q0RURFMCI+QjwvdHNwYW4+CiAgPC90ZXh0PgogIDxyZWN0IHg9IjIiIHk9IjI2IiB3aWR0aD0iMjgiIGhlaWdodD0iMS41IiBmaWxsPSIjMDBFNjc2IiBvcGFjaXR5PSIwLjQiLz4KPC9zdmc+Cg==">
 <style>
- :root{{--bg:#060C0A;--bg-raised:#0A1410;--bg-card:#0E1A14;--border:#162A1E;--border-hi:#1A5C38;
-   --green:#00E676;--green-dim:#00994A;--amber:#F59E0B;--text:#D4EDE0;--text-muted:#5E8A72;--text-dim:#2E5040;
-   --ko:#FF5A5A;--mono:'Courier New',Consolas,'Cascadia Code','SF Mono',Menlo,monospace;
-   --sans:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}}
- *{{box-sizing:border-box}}
- body{{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.75}}
- .grid-bg{{position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;
-   background-image:linear-gradient(rgba(0,230,118,.15) 1px,transparent 1px),
-     linear-gradient(90deg,rgba(0,230,118,.15) 1px,transparent 1px);background-size:80px 80px}}
- .wrap{{position:relative;z-index:1;max-width:1200px;margin:0 auto;padding:2.5rem 1.25rem}}
- .wordmark{{font-family:var(--mono);font-weight:700;font-size:1.5rem;letter-spacing:1.4px;color:var(--text)}}
- .wordmark .dot{{color:var(--green)}}
- .tagline{{font-family:var(--mono);font-size:.7rem;letter-spacing:.25em;text-transform:uppercase;
-   color:var(--text-muted);margin-top:.3rem}}
- h1{{font-family:var(--mono);font-size:1.9rem;margin:1.6rem 0 .3rem;color:var(--text)}}
- .lede{{color:var(--text-muted);margin:0 0 1.5rem;max-width:62ch}}
- .cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin:1.5rem 0}}
- .card{{border:1px solid var(--border);border-radius:10px;padding:1rem;background:var(--bg-card)}}
- .card h3{{margin:0 0 .5rem;font-family:var(--mono);font-size:.72rem;color:var(--text-muted);
-   text-transform:uppercase;letter-spacing:.1em}}
- .card .big{{font-size:1.8rem;font-weight:700;color:var(--text)}} .card .sub{{color:var(--text-muted);font-size:.85rem}}
- .card a{{text-decoration:none;color:inherit}} .card a:hover .big{{color:var(--green)}}
- h2{{font-family:var(--mono);text-transform:uppercase;letter-spacing:.15em;color:var(--green);font-size:1.05rem;
-   margin-top:2.4rem;padding-top:.8rem;border-top:1px solid var(--border-hi)}}
- table{{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.9rem}}
- th,td{{border:1px solid var(--border);padding:.45rem .6rem;text-align:center}}
- th{{font-family:var(--mono);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;
-   color:var(--text-muted);background:var(--bg-raised)}}
- th:first-child,td:first-child{{text-align:left}} tbody tr:hover{{background:var(--bg-raised)}}
- code{{font-family:var(--mono);color:var(--green);background:var(--bg-card);padding:.05em .35em;border-radius:4px}}
- a{{color:var(--green)}} a:hover{{color:var(--green-dim)}} strong{{color:var(--text)}}
- .ko{{color:var(--ko);font-weight:600}} .empty,.note{{color:var(--text-muted);font-size:.9rem}}
- tr.st-degraded td:first-child,tr.st-pending td:first-child,tr.st-na td:first-child{{color:var(--text-muted)}}
- footer{{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--border);color:var(--text-muted);font-size:.82rem}}
- footer .wm{{font-family:var(--mono);font-weight:700;letter-spacing:1px;color:var(--text)}}
- footer .wm .dot{{color:var(--green)}}{SORT_CSS}
- @keyframes scanline{{0%{{transform:translateY(-100vh)}}100%{{transform:translateY(100vh)}}}}
- .scanline{{position:fixed;left:0;top:0;width:100%;height:80px;background:linear-gradient(to bottom,transparent,rgba(0,230,118,.03) 40%,rgba(0,230,118,.07) 50%,rgba(0,230,118,.03) 60%,transparent);pointer-events:none;z-index:0;animation:scanline 8s linear infinite;will-change:transform}}
- @media(prefers-reduced-motion:reduce){{.scanline{{display:none}}}}
-</style></head><body><div class="grid-bg"></div><div class="scanline"></div><div class="wrap">
+{CI_CSS}</style></head><body><div class="grid-bg"></div><div class="scanline"></div><div class="wrap">
 <header><div class="wordmark">SOUTH<span class="dot">.</span>BYTE</div>
 <div class="tagline">AI Governance &amp; IT-Beratung</div></header>
 <h1>Modell-Evaluationen</h1>
@@ -830,7 +1033,11 @@ def main() -> int:
     lauf = local["run"] or saas["run"] or "unknown"
     # llm-Count = SaaS + lokal zusammen.
     write_summary(lauf, local["rows"] + saas["rows"], load_guards(), load_image(), load_tts())
-    write_seo(seite)
+    mx = matrix_seite(local if local["run"] else None)
+    if mx:
+        (DOCS / "matrix.html").write_text(mx, encoding="utf-8")
+        print(f"✓ docs/matrix.html gebaut")
+    write_seo(seite, mx)
     pruefe_metadaten(local["rows"], saas["rows"])
     return 0
 
