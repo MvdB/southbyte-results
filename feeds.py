@@ -210,6 +210,13 @@ def load_tts() -> list[dict]:
     """WER je TTS-Stimme aus den Rescore-Judge-Läufen (Whisper=judge1, Voxtral=judge2)."""
     out = []
     for j in sorted(TTS_RESULTS.glob("*_suite_*/rescore_judge2.json")):
+        # Gegenstueck zu make_docs.py in southbyte-tts: ein Lauf kann gemessen
+        # und trotzdem nicht zu veroeffentlichen sein (Lizenz, oder das Modell
+        # kann die Sprache des Testsatzes gar nicht). Der Marker liegt beim
+        # Lauf; ohne ihn hier wuerde ein spaeteres pauschales Rescoring genau
+        # die Laeufe auf die Seite holen, die dort nicht hingehoeren.
+        if (j.parent / ".nicht-veroeffentlichen").exists():
+            continue
         try:
             d = json.loads(j.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
