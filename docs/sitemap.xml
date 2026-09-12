@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- inhalt-sha256: 8d190fc9cee05e45 — haelt das Datum unten stabil,
+<!-- inhalt-sha256: 5b13f4351d3f46ef — haelt das Datum unten stabil,
      solange sich die Seite nicht aendert. Nicht von Hand bearbeiten. -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://results.southbyte.de/</loc>
-    <lastmod>2026-09-12</lastmod>
+    <lastmod>2026-09-13</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
     <loc>https://results.southbyte.de/matrix.html</loc>
-    <lastmod>2026-09-12</lastmod>
+    <lastmod>2026-09-13</lastmod>
     <changefreq>weekly</changefreq>
   </url>
 </urlset>
