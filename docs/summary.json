@@ -1,9 +1,9 @@
 {
   "run": "2026-lokal-judge-claude-sonnet-5",
-  "date": "2026-09-12",
+  "date": "2026-09-13",
   "counts": {
     "llm": 62,
-    "guard": 5,
+    "guard": 6,
     "image": 6,
     "tts": 22
   },
