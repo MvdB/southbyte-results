@@ -87,7 +87,7 @@ _SAAS_PROVIDER = [
 GUARD_NAME = {
     "granite-guardian": "Granite-Guardian-4.1-8B", "gpt-oss-safeguard": "gpt-oss-safeguard-20b",
     "nemotron-3-5": "Nemotron-3.5-Content-Safety", "nemotron-3": "Nemotron-3-Content-Safety",
-    "shieldstral": "Shieldstral-1.0-3B",
+    "shieldstral": "Shieldstral-1.0-3B", "singguard-2b": "SingGuard-2b",
 }
 
 
