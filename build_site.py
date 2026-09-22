@@ -214,9 +214,20 @@ def image_section(imgs: list[dict]) -> tuple[str, str]:
         rows.append([_mlink(d.get("model")), rel, num(d.get("generated")), num(d.get("gen_seconds_mean")),
                      num(d.get("text_rendering_cer_mean")), num(d.get("text_rendering_exact_rate")),
                      num(d.get("adherence_score_mean")), lic])
+    # Nicht-kommerzielle Lizenzen sichtbar machen: die Einschraenkung gilt auch
+    # fuer die Bilder, die diese Modelle erzeugt haben (Gegenstueck zum Hinweis
+    # in southbyte-image/eval/make_docs.py).
+    nk = {"qwen-research": "Qwen Research License",
+          "flux-2-dev-non-commercial": "FLUX.2-dev Non-Commercial License"}
+    betroffen = sorted({f'{d.get("model")} ({nk[lic]})' for d in imgs
+                        if (lic := str(model_meta(d.get("model")).get("license", ""))) in nk})
+    hinweis = (f'<p class="note"><strong>Nicht-kommerzielle Lizenzen:</strong> '
+               f'{esc(" · ".join(betroffen))} — nur Forschung und Evaluation, '
+               f'auch fuer die erzeugten Bilder.</p>\n') if betroffen else ""
     sec = ('<h2 id="image">Text-to-Image</h2>\n'
            + f'<p class="note">Spalte klicken zum Sortieren · Modell → Model-Card · '
            f'Vollständige Galerie: <a href="{IMAGE_URL}">{IMAGE_URL}</a></p>\n'
+           + hinweis
            + f'<div style="overflow-x:auto">{table(["Modell", "Release", "Bilder", "Ø s/Bild", "Textrender CER", "Textrender exakt", "Prompt-Treue", "Lizenz"], rows)}</div>')
     fastest = min(imgs, key=lambda d: d.get("gen_seconds_mean") or 9e9)
     c = card("Image", f'{len(imgs)}', f'Modelle · schnellstes {fastest.get("model")}', IMAGE_URL)
