@@ -224,6 +224,18 @@ def image_section(imgs: list[dict]) -> tuple[str, str]:
     hinweis = (f'<p class="note"><strong>Nicht-kommerzielle Lizenzen:</strong> '
                f'{esc(" · ".join(betroffen))} — nur Forschung und Evaluation, '
                f'auch fuer die erzeugten Bilder.</p>\n') if betroffen else ""
+    # Lizenzen, die kommerzielle Nutzung an Bedingungen knuepfen statt sie
+    # auszuschliessen — "nur Forschung und Evaluation" traefe sie nicht
+    # (Gegenstueck zu _MIT_BEDINGUNGEN in southbyte-image/eval/make_docs.py).
+    mb = {"flux-kommunity": "FLUX Kommunity License v1.0"}
+    bedingt = sorted({f'{d.get("model")} ({mb[lic]})' for d in imgs
+                      if (lic := str(model_meta(d.get("model")).get("license", ""))) in mb})
+    if bedingt:
+        hinweis += (f'<p class="note"><strong>Lizenz mit Bedingungen:</strong> '
+                    f'{esc(" · ".join(bedingt))} — nicht-kommerziell erlaubt; kommerzielle '
+                    'Nutzung der erzeugten Bilder nur fuer Anwender unter 5 Mio. US-Dollar '
+                    'Jahresumsatz und nur mit Inhaltsfilter oder Pruefung vor der '
+                    'Veroeffentlichung.</p>\n')
     sec = ('<h2 id="image">Text-to-Image</h2>\n'
            + f'<p class="note">Spalte klicken zum Sortieren · Modell → Model-Card · '
            f'Vollständige Galerie: <a href="{IMAGE_URL}">{IMAGE_URL}</a></p>\n'
