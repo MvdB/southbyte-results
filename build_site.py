@@ -1027,6 +1027,15 @@ def pruefe_metadaten(*zeilengruppen) -> int:
                 luecken.append("license")
             if luecken:
                 fehlend.append((name, ", ".join(luecken)))
+    # Guards stehen in einer eigenen Tabelle und laufen ueber GUARD_NAME (feeds.py)
+    # auf ihren models.yaml-Eintrag. Fehlt dort die Zuordnung, zeigt die Tabelle
+    # stumm '—' — so stand Granite-Switch-8B am 2026-10-25 kurz ohne Lizenz da.
+    for g in load_guards():
+        eintrag = GUARD_NAME.get(g["slug"], "")
+        luecken = [f for f in ("release_date", "license") if not model_meta(eintrag).get(f)]
+        if luecken:
+            fehlend.append((f'{g["label"]} (Guard, Zuordnung: {eintrag or "fehlt in GUARD_NAME"})', ", ".join(luecken)))
+        gesehen.add(g["label"])
     if fehlend:
         print(f"⚠ {len(fehlend)} Modell(e) ohne vollstaendige Metadaten in {MODELS_YAML}:")
         for name, luecken in sorted(fehlend):
@@ -1061,8 +1070,8 @@ def main() -> int:
         (DOCS / "matrix.html").write_text(mx, encoding="utf-8")
         print(f"✓ docs/matrix.html gebaut")
     write_seo(seite, mx)
-    pruefe_metadaten(local["rows"], saas["rows"])
-    return 0
+    # Lizenz oder Release fehlen: Exitcode 1, damit es niemand uebersieht.
+    return 1 if pruefe_metadaten(local["rows"], saas["rows"]) else 0
 
 
 if __name__ == "__main__":
