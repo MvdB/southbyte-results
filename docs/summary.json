@@ -3,7 +3,7 @@
   "date": "2026-10-25",
   "counts": {
     "llm": 70,
-    "guard": 7,
+    "guard": 14,
     "image": 9,
     "tts": 22
   },
