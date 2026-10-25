@@ -25,8 +25,8 @@ from datetime import date
 from pathlib import Path
 
 from feeds import (
-    GUARD_NAME, MODELS_YAML, PLAYBOOK_LABELS, REPORTS_DIR, feed_stand,
-    image_dirs, load_guards, load_image,
+    GUARD_AUSSER_KONKURRENZ, GUARD_NAME, MODELS_YAML, PLAYBOOK_LABELS, REPORTS_DIR, feed_stand,
+    image_dirs, image_seitenhinweise, load_guards, load_image,
     load_llm_runs, load_roster, load_tts, model_license, model_meta, model_repo,
     running_profile, scan_local_reports,
 )
@@ -193,14 +193,23 @@ def guards_section(guards: list[dict]) -> tuple[str, str]:
 
     def glic(g):
         return esc(model_meta(GUARD_NAME.get(g["slug"], "")).get("license", "—") or "—")
-    rows = [[glabel(g), rel_cell(GUARD_NAME.get(g["slug"], ""))] + [num(g["metrics"].get(k)) for k in keys]
-            + [glic(g)] for g in guards]
-    best = max(guards, key=lambda g: g["metrics"].get("f1", 0) or 0)
+    def zeilen(gs):
+        return [[glabel(g), rel_cell(GUARD_NAME.get(g["slug"], ""))] + [num(g["metrics"].get(k)) for k in keys]
+                + [glic(g)] for g in gs]
+    kopf = ["Guard", "Release"] + [_GUARD_KEY_LABEL.get(k, k) for k in keys] + ["Lizenz"]
+    wett = [g for g in guards if g["slug"] not in GUARD_AUSSER_KONKURRENZ] or guards
+    ak = [g for g in guards if g["slug"] in GUARD_AUSSER_KONKURRENZ]
+    best = max(wett, key=lambda g: g["metrics"].get("f1", 0) or 0)
     sec = (f'<h2 id="guards">Guardrails (Playbook 08)</h2>\n'
            f'<p class="note">Guard-Name anklicken → Fall für Fall (Wahrheit vs. Vorhersage) auf '
            f'<a href="{LLM_URL}">southbyte-vllm</a>. Kein Judge — das Label ist die Wahrheit.</p>\n'
-           f'<div class="gtbl" style="overflow-x:auto">'
-           f'{table(["Guard", "Release"] + [_GUARD_KEY_LABEL.get(k, k) for k in keys] + ["Lizenz"], rows)}</div>')
+           f'<div class="gtbl" style="overflow-x:auto">{table(kopf, zeilen(wett))}</div>')
+    if ak:
+        sec += (f'\n<h3 id="guards-ausser-konkurrenz">Außer Konkurrenz</h3>\n'
+                f'<p class="note">Entscheidungsmodelle nach dem Muster von Jev, keine Guards: sie beantworten '
+                f'die Policy als Ja/Nein-Frage mit einer Wahrscheinlichkeit (Schwelle 0,5), dieselben '
+                f'Kriterien und Fälle wie oben. Nicht im Vergleich der besten Werte.</p>\n'
+                f'<div class="gtbl" style="overflow-x:auto">{table(kopf, zeilen(ak))}</div>')
     c = card("Guards", f'{(best["metrics"].get("f1", 0) or 0):.3f}', f'bestes F1 · {best["label"]}', "#guards")
     return sec, c
 
@@ -227,25 +236,30 @@ def image_section(imgs: list[dict]) -> tuple[str, str]:
     # Nicht-kommerzielle Lizenzen sichtbar machen: die Einschraenkung gilt auch
     # fuer die Bilder, die diese Modelle erzeugt haben (Gegenstueck zum Hinweis
     # in southbyte-image/eval/make_docs.py).
-    nk = {"qwen-research": "Qwen Research License",
-          "flux-2-dev-non-commercial": "FLUX.2-dev Non-Commercial License"}
-    betroffen = sorted({f'{d.get("model")} ({nk[lic]})' for d in imgs
-                        if (lic := str(model_meta(d.get("model")).get("license", ""))) in nk})
-    hinweis = (f'<p class="note"><strong>Nicht-kommerzielle Lizenzen:</strong> '
-               f'{esc(" · ".join(betroffen))} — nur Forschung und Evaluation, '
-               f'auch fuer die erzeugten Bilder.</p>\n') if betroffen else ""
+    # Je Lizenz ein eigener Satz: ob die Einschraenkung auch fuer die Bilder gilt,
+    # regeln die Lizenzen verschieden (FLUX.2-dev gibt die Ausgaben frei).
+    hinweis = ""
+    for lic_key, (bez, regel) in BILD_NICHT_KOMMERZIELL.items():
+        betroffen = sorted({f'{d.get("model")} ({bez})' for d in imgs
+                            if str(model_meta(d.get("model")).get("license", "")) == lic_key})
+        if betroffen:
+            hinweis += (f'<p class="note"><strong>Nicht-kommerzielle Lizenz:</strong> '
+                        f'{esc(" · ".join(betroffen))} — {esc(regel)}.</p>\n')
     # Lizenzen, die kommerzielle Nutzung an Bedingungen knuepfen statt sie
     # auszuschliessen — "nur Forschung und Evaluation" traefe sie nicht
     # (Gegenstueck zu _MIT_BEDINGUNGEN in southbyte-image/eval/make_docs.py).
-    mb = {"flux-kommunity": "FLUX Kommunity License v1.0"}
-    bedingt = sorted({f'{d.get("model")} ({mb[lic]})' for d in imgs
-                      if (lic := str(model_meta(d.get("model")).get("license", ""))) in mb})
-    if bedingt:
-        hinweis += (f'<p class="note"><strong>Lizenz mit Bedingungen:</strong> '
-                    f'{esc(" · ".join(bedingt))} — nicht-kommerziell erlaubt; kommerzielle '
-                    'Nutzung der erzeugten Bilder nur fuer Anwender unter 5 Mio. US-Dollar '
-                    'Jahresumsatz und nur mit Inhaltsfilter oder Pruefung vor der '
-                    'Veroeffentlichung.</p>\n')
+    # Je Lizenz ein eigener Satz: die Bedingungen unterscheiden sich.
+    for lic_key, (bez, bedingung) in BILD_MIT_BEDINGUNGEN.items():
+        bedingt = sorted({f'{d.get("model")} ({bez})' for d in imgs
+                          if str(model_meta(d.get("model")).get("license", "")) == lic_key})
+        if bedingt:
+            hinweis += (f'<p class="note"><strong>Lizenz mit Bedingungen:</strong> '
+                        f'{esc(" · ".join(bedingt))} — nicht-kommerziell erlaubt; {esc(bedingung)}.</p>\n')
+    abw = image_seitenhinweise()
+    abweichend = [n for n in sorted({d.get("model") for d in imgs}) if n in abw]
+    if abweichend:
+        hinweis += (f'<p class="note"><strong>Abweichungen vom Kohortenaufbau:</strong> '
+                    + " · ".join(f"{esc(n)}: {esc(abw[n])}" for n in abweichend) + '</p>\n')
     sec = ('<h2 id="image">Text-to-Image</h2>\n'
            + f'<p class="note">Spalte klicken zum Sortieren · Modell → Model-Card · '
            f'Vollständige Galerie: <a href="{IMAGE_URL}">{IMAGE_URL}</a></p>\n'
@@ -1001,6 +1015,37 @@ Teil der <a href="https://github.com/MvdB?tab=repositories&amp;q=southbyte">sout
 """
 
 
+# Lizenzklassen der Bildmodelle (Gegenstueck zu eval/make_docs.py in southbyte-image).
+# Jede Lizenz eines gezeigten Bildmodells muss in genau einer davon stehen, sonst
+# meldet pruefe_metadaten eine Luecke — eine neue Lizenz faellt sonst stumm durch.
+BILD_OHNE_HINWEIS = {"apache-2.0", "mit"}
+BILD_NICHT_KOMMERZIELL = {
+    "qwen-research": ("Qwen Research License",
+                      "nur Forschung und Evaluation, auch fuer die erzeugten Bilder"),
+    # "You may use Output for any purpose (including for commercial purposes),
+    # except as expressly prohibited herein."
+    "flux-2-dev-non-commercial": ("FLUX.2-dev Non-Commercial License",
+                                  "das Modell nur nicht-kommerziell; die erzeugten Bilder laut Lizenz "
+                                  "fuer jeden Zweck, auch kommerziell, ausser zum Training "
+                                  "konkurrierender Modelle, und nur mit Inhaltsfilter oder Pruefung "
+                                  "sowie KI-Kennzeichnung, soweit gesetzlich verlangt"),
+    "ideogram-4-non-commercial": ("Ideogram Non-Commercial Model Agreement",
+                                  "nur nicht-kommerziell, fuer Unternehmen nur Test und Evaluation; "
+                                  "keine Ausgaben zur Bewerbung umsatzbringender Produkte oder Dienste; "
+                                  "die Bilder der Galerie sind im Rahmen dieser Evaluation entstanden "
+                                  "und dienen nur dem Vergleich"),
+}
+BILD_MIT_BEDINGUNGEN = {
+    "flux-kommunity": ("FLUX Kommunity License v1.0",
+                       "kommerzielle Nutzung der erzeugten Bilder nur fuer Anwender unter 5 Mio. US-Dollar "
+                       "Jahresumsatz und nur mit Inhaltsfilter oder Pruefung vor der Veroeffentlichung"),
+    "krea-2-community-license": ("Krea 2 Community License v1",
+                                 "kommerzielle Nutzung von Modell und Bildern nur fuer Anwender unter 1 Mio. "
+                                 "US-Dollar Jahresumsatz; Inhaltsfilter oder Pruefung durch Menschen bei jedem "
+                                 "Einsatz"),
+}
+
+
 def pruefe_metadaten(*zeilengruppen) -> int:
     """Warne, wenn Modelle in der Tabelle ohne Release-Datum oder Lizenz landen.
 
@@ -1042,6 +1087,11 @@ def pruefe_metadaten(*zeilengruppen) -> int:
         if luecken:
             fehlend.append((f'{g["label"]} (Guard, Zuordnung: {eintrag or "fehlt in GUARD_NAME"})', ", ".join(luecken)))
         gesehen.add(g["label"])
+    bekannt = BILD_OHNE_HINWEIS | BILD_NICHT_KOMMERZIELL.keys() | BILD_MIT_BEDINGUNGEN.keys()
+    for d in load_image():
+        lic = str(model_meta(d.get("model")).get("license", "") or "")
+        if lic and lic not in bekannt:
+            fehlend.append((f'{d.get("model")} (Bild)', f"Einordnung der Lizenz '{lic}' in BILD_*"))
     if fehlend:
         print(f"⚠ {len(fehlend)} Modell(e) ohne vollstaendige Metadaten in {MODELS_YAML}:")
         for name, luecken in sorted(fehlend):

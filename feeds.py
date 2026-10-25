@@ -91,11 +91,16 @@ GUARD_NAME = {
     "granite-switch-8b": "Granite-Switch-4.1-8B-Guardian", "granite-switch-30b": "Granite-Switch-4.1-30B-Guardian",
     **{f"qwen3guard-{art.lower()}-{groesse.lower().replace('.', '-')}": f"Qwen3Guard-{art}-{groesse}"
        for art in ("Gen", "Stream") for groesse in ("0.6B", "4B", "8B")},
+    "laya-multilingual": "laya-multilingual",
 }
+
+# Zeilen ausser Konkurrenz (Slug): keine Guards, sondern Entscheidungsmodelle nach dem
+# Muster von Jev. Eigene Tabelle, nicht im "bestes F1" (Gegenstueck in make_public_site.py).
+GUARD_AUSSER_KONKURRENZ = {"laya-multilingual"}
 
 # Guards, die nicht ueber vLLM laufen: Qwen3Guard-Stream hat dort keine
 # Architektur und laeuft ueber transformers hinter guards/qwen3guard_stream_server.py.
-GUARD_OHNE_VLLM = {f"qwen3guard-stream-{g}" for g in ("0-6b", "4b", "8b")}
+GUARD_OHNE_VLLM = {f"qwen3guard-stream-{g}" for g in ("0-6b", "4b", "8b")} | {"laya-multilingual"}
 
 
 # ── Modell-Metadaten ─────────────────────────────────────────────────────────
@@ -155,6 +160,27 @@ def model_repo(profile: str, is_saas: bool) -> str:
                 return url
         return ""
     return "https://huggingface.co/" + profile.replace("--", "/", 1) if "--" in profile else ""
+
+
+def image_seitenhinweise() -> dict:
+    """name→seitenhinweis aus image_models.yaml (stdlib-Regex): Abweichungen vom
+    Kohortenaufbau, die neben den Zahlen stehen muessen (Gegenstueck zu
+    _load_seitenhinweise in southbyte-image/eval/make_docs.py)."""
+    out: dict = {}
+    try:
+        lines = IMAGE_CONFIG.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return out
+    name = None
+    for ln in lines:
+        g = re.match(r'\s*-\s*name:\s*"?([^"#\n]+?)"?\s*$', ln)
+        if g:
+            name = g.group(1).strip()
+            continue
+        h = re.match(r'\s+seitenhinweis:\s*"(.*)"\s*$', ln)
+        if h and name:
+            out[name] = h.group(1)
+    return out
 
 
 def image_dirs() -> dict:
