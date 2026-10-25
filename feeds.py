@@ -88,8 +88,14 @@ GUARD_NAME = {
     "granite-guardian": "Granite-Guardian-4.1-8B", "gpt-oss-safeguard": "gpt-oss-safeguard-20b",
     "nemotron-3-5": "Nemotron-3.5-Content-Safety", "nemotron-3": "Nemotron-3-Content-Safety",
     "shieldstral": "Shieldstral-1.0-3B", "singguard-2b": "SingGuard-2b",
-    "granite-switch-8b": "Granite-Switch-4.1-8B-Guardian",
+    "granite-switch-8b": "Granite-Switch-4.1-8B-Guardian", "granite-switch-30b": "Granite-Switch-4.1-30B-Guardian",
+    **{f"qwen3guard-{art.lower()}-{groesse.lower().replace('.', '-')}": f"Qwen3Guard-{art}-{groesse}"
+       for art in ("Gen", "Stream") for groesse in ("0.6B", "4B", "8B")},
 }
+
+# Guards, die nicht ueber vLLM laufen: Qwen3Guard-Stream hat dort keine
+# Architektur und laeuft ueber transformers hinter guards/qwen3guard_stream_server.py.
+GUARD_OHNE_VLLM = {f"qwen3guard-stream-{g}" for g in ("0-6b", "4b", "8b")}
 
 
 # ── Modell-Metadaten ─────────────────────────────────────────────────────────
@@ -674,7 +680,8 @@ def _guard_messlauf(g: dict) -> Messlauf:
     return Messlauf(
         config="guardrails", run_id=f"guardrails/{g['label']}/{g['mtime']}",
         entity=g["label"], served_model_ref=ref_saeubern(g.get("served_model")) or g["label"],
-        measured_at=g["mtime"], hardware=HARDWARE_LOKAL, served_by="vllm",
+        measured_at=g["mtime"], hardware=HARDWARE_LOKAL,
+        served_by="transformers" if g["slug"] in GUARD_OHNE_VLLM else "vllm",
         model_id=mid, base_model_id=basis, model_revision=hf_ids.revision(mid),
         quantization=hf_ids.quantisierung(mid), valid=True, metriken=m,
         # Kein Judge: das Label ist die Wahrheit. Der Grund steht ausdruecklich
