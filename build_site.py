@@ -51,6 +51,16 @@ DATASET_URL = "https://huggingface.co/datasets/SouthByte/dgx-spark-eval"
 
 
 # ── Render-Helfer ────────────────────────────────────────────────────────────
+
+def gesamt_zelle(urteil: str | None, pass_rate) -> str:
+    """Gesamt-Spalte: erst die Pass-Rate, dann das Urteil. Sortiert wird nach der
+    Zahl (data-sort); als Text kaemen sonst K.O., PASS, WARN alphabetisch zuerst."""
+    ov = urteil or "—"
+    ov_html = f'<span class="ko">{esc(ov)}</span>' if ov == "K.O." else esc(ov)
+    if pass_rate in (None, ""):
+        return f'<span data-sort="-1">— {ov_html}</span>'
+    return f'<span data-sort="{esc(pass_rate)}">{esc(pass_rate)}% {ov_html}</span>'
+
 def rel_cell(name: str) -> str:
     """Release-Zelle mit numerischem Sortier-Key (YYYYMM); sonst liest der
     Sortierer nur '2026' und ignoriert den Monat."""
@@ -278,8 +288,6 @@ def llm_chapter(data: dict | None, cid: str, title: str, lead: str, card_title: 
               + ["Tok/s", "TTFT", "Lizenz"])
     rows = []
     for r in data["rows"]:
-        ov = r["overall"] or "—"
-        ov_html = f'<span class="ko">{esc(ov)}</span>' if ov == "K.O." else esc(ov)
         url = model_repo(r["profile"], r["is_saas"])
         if not url:  # SaaS ohne Anbieter-Link → HF-Card aus models.yaml (Kimi/MiniMax/DeepSeek/Qwen/…)
             hr = model_meta(r["model"]).get("hf_repo")
@@ -287,7 +295,7 @@ def llm_chapter(data: dict | None, cid: str, title: str, lead: str, card_title: 
         hf = f' <a href="{esc(url)}" title="Repo/Anbieter" target="_blank" rel="noopener">↗</a>' if url else ""
         link = f'<a href="{LLM_URL}m/{esc(r["stem"])}.html">{esc(r["model"])}</a>{hf}'
         rel = rel_cell(r["model"])
-        cells = [link, rel, f'{ov_html} {esc(r["pass_rate"])}%', str(r["ko"] or 0)]
+        cells = [link, rel, gesamt_zelle(r["overall"], r["pass_rate"]), str(r["ko"] or 0)]
         for c in cols:
             v = r["pb"].get(c)
             cells.append("—" if v is None else f"{round(float(v) * 100)}%")
@@ -357,12 +365,10 @@ def llm_local_chapter(local, roster, reports, running_prof) -> tuple[str, str]:
         if status == "valid":
             n_valid += 1
             r = valid_by_name[name]
-            ov = r["overall"] or "—"
-            ov_html = f'<span class="ko">{esc(ov)}</span>' if ov == "K.O." else esc(ov)
             url = model_repo(r["profile"], False)
             hf = f' <a href="{esc(url)}" title="Repo" target="_blank" rel="noopener">↗</a>' if url else ""
             link = f'<a href="{LLM_URL}m/{esc(r["stem"])}.html">{esc(name)}</a>{hf}'
-            cells = [link, rel, f'{ov_html} {esc(r["pass_rate"])}%', str(r["ko"] or 0)]
+            cells = [link, rel, gesamt_zelle(r["overall"], r["pass_rate"]), str(r["ko"] or 0)]
             for c in cols:
                 v = r["pb"].get(c)
                 cells.append("—" if v is None else f"{round(float(v) * 100)}%")
