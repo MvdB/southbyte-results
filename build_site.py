@@ -26,7 +26,7 @@ from pathlib import Path
 
 from feeds import (
     GUARD_AUSSER_KONKURRENZ, GUARD_NAME, MODELS_YAML, PLAYBOOK_LABELS, REPORTS_DIR, feed_stand,
-    image_dirs, load_guards, load_image,
+    image_dirs, image_seitenhinweise, load_guards, load_image,
     load_llm_runs, load_roster, load_tts, model_license, model_meta, model_repo,
     running_profile, scan_local_reports,
 )
@@ -255,6 +255,11 @@ def image_section(imgs: list[dict]) -> tuple[str, str]:
         if bedingt:
             hinweis += (f'<p class="note"><strong>Lizenz mit Bedingungen:</strong> '
                         f'{esc(" · ".join(bedingt))} — nicht-kommerziell erlaubt; {esc(bedingung)}.</p>\n')
+    abw = image_seitenhinweise()
+    abweichend = [n for n in sorted({d.get("model") for d in imgs}) if n in abw]
+    if abweichend:
+        hinweis += (f'<p class="note"><strong>Abweichungen vom Kohortenaufbau:</strong> '
+                    + " · ".join(f"{esc(n)}: {esc(abw[n])}" for n in abweichend) + '</p>\n')
     sec = ('<h2 id="image">Text-to-Image</h2>\n'
            + f'<p class="note">Spalte klicken zum Sortieren · Modell → Model-Card · '
            f'Vollständige Galerie: <a href="{IMAGE_URL}">{IMAGE_URL}</a></p>\n'

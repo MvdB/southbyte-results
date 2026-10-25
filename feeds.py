@@ -162,6 +162,27 @@ def model_repo(profile: str, is_saas: bool) -> str:
     return "https://huggingface.co/" + profile.replace("--", "/", 1) if "--" in profile else ""
 
 
+def image_seitenhinweise() -> dict:
+    """name→seitenhinweis aus image_models.yaml (stdlib-Regex): Abweichungen vom
+    Kohortenaufbau, die neben den Zahlen stehen muessen (Gegenstueck zu
+    _load_seitenhinweise in southbyte-image/eval/make_docs.py)."""
+    out: dict = {}
+    try:
+        lines = IMAGE_CONFIG.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return out
+    name = None
+    for ln in lines:
+        g = re.match(r'\s*-\s*name:\s*"?([^"#\n]+?)"?\s*$', ln)
+        if g:
+            name = g.group(1).strip()
+            continue
+        h = re.match(r'\s+seitenhinweis:\s*"(.*)"\s*$', ln)
+        if h and name:
+            out[name] = h.group(1)
+    return out
+
+
 def image_dirs() -> dict:
     """name→hf-dir aus southbyte-image/config/image_models.yaml (stdlib-Regex)."""
     out: dict = {}
