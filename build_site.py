@@ -25,7 +25,7 @@ from datetime import date
 from pathlib import Path
 
 from feeds import (
-    GUARD_AUSSER_KONKURRENZ, GUARD_NAME, MODELS_YAML, PLAYBOOK_LABELS, REPORTS_DIR, feed_stand,
+    GUARD_AUSSER_KONKURRENZ, GUARD_NAME, MODELS_YAML, VISION_GRUPPEN, load_vision, vision_quellen, PLAYBOOK_LABELS, REPORTS_DIR, feed_stand,
     image_dirs, image_seitenhinweise, load_guards, load_image,
     load_llm_runs, load_roster, load_tts, model_license, model_meta, model_repo,
     running_profile, scan_local_reports,
@@ -144,6 +144,7 @@ SORT_SCRIPT = """
 
 # Bestwert-Richtung je Spaltentitel (grün): min = niedriger besser, max = höher besser.
 _BEST_DIR = {
+    **{f"CER {lbl}": "min" for _, lbl in VISION_GRUPPEN},
     "Gesamt": "max", "Tok/s": "max", "F1": "max", "Recall": "max",
     "Qualität": "max", "Deutsch": "max", "Bias": "max", "Code": "max", "Performance": "max",
     "HSF": "max", "Guardrails": "max", "Sicherheit": "max",
@@ -211,6 +212,43 @@ def guards_section(guards: list[dict]) -> tuple[str, str]:
                 f'Kriterien und Fälle wie oben. Nicht im Vergleich der besten Werte.</p>\n'
                 f'<div class="gtbl" style="overflow-x:auto">{table(kopf, zeilen(ak))}</div>')
     c = card("Guards", f'{(best["metrics"].get("f1", 0) or 0):.3f}', f'bestes F1 · {best["label"]}', "#guards")
+    return sec, c
+
+
+def vision_section(vis: list[dict]) -> tuple[str, str]:
+    """Vision-Dimension: echte Bilder lesen und verstehen (eigene Kohorte, kein Judge)."""
+    if not vis:
+        return "", card("Vision", "—", "kein Lauf")
+    kopf = (["Modell", "Art", "Release"] + [f"CER {lbl}" for _, lbl in VISION_GRUPPEN]
+            + ["Bildfragen", "Fallen", "K.O.", "Lizenz"])
+
+    def anteil(paar):
+        richtig, n = paar
+        return "—" if not n else f'<span data-sort="{richtig / n:.3f}">{richtig}/{n}</span>'
+    zeilen = []
+    for v in sorted(vis, key=lambda v: (v["ocr"], v["cer"].get("fnhd") if v["cer"].get("fnhd") is not None else 9)):
+        zeilen.append([esc(v["label"]), "OCR" if v["ocr"] else "VL", rel_cell(v["eintrag"])]
+                      + [num(v["cer"].get(g)) for g, _ in VISION_GRUPPEN]
+                      + [anteil(v["bild"]), anteil(v["falle"]), str(v["ko"]),
+                         esc(model_meta(v["eintrag"]).get("license", "—") or "—")])
+    quellen = "".join(
+        f'<li>{esc(q["titel"])} — {esc(q["urheber"])}; {esc(q["lizenz"])}; '
+        + (f'<a href="{esc(q["quelle"])}" target="_blank" rel="noopener">{esc(q["quelle"])}</a>' if q["quelle"].startswith("http") else esc(q["quelle"]))
+        + f' ({q["faelle"]} {"Fall" if q["faelle"] == 1 else "Fälle"})</li>'
+        for q in vision_quellen())
+    sec = ('<h2 id="vision">Vision — echte Bilder lesen und verstehen</h2>\n'
+           '<p class="note">Echte Scans und Grafiken aus frei lizenzierten Archiven: Transkription '
+           'in vier Schriftlagen, Fragen zu Tabellen, Diagrammen und Karten, Fallen (gefragt wird nach '
+           'etwas, das nicht im Bild steht). Kein Judge. CER = Median der normalisierten '
+           'Zeichenfehlerrate je Schriftlage, kleiner ist besser. OCR-Spezialisten bekommen nur die '
+           'Transkription. K.O. = in einer Falle einen Wert erfunden. Eigene Dimension, nicht Teil der '
+           'LLM-Wertung.</p>\n'
+           f'<div style="overflow-x:auto">{table(kopf, zeilen)}</div>\n'
+           '<p class="note"><strong>Quellen der Bilder</strong> (Ausschnitte, ggf. verkleinert):</p>'
+           f'<ul class="note">{quellen}</ul>')
+    vl = [v for v in vis if not v["ocr"]]
+    beste = min(vl, key=lambda v: v["cer"].get("fnhd") if v["cer"].get("fnhd") is not None else 9) if vl else vis[0]
+    c = card("Vision", f"{len(vis)}", f"Modelle · Handschrift am besten {beste['label']}", "#vision")
     return sec, c
 
 
@@ -979,7 +1017,9 @@ def build() -> str:
 
     tts = load_tts()
     tts_sec, tts_card = tts_section(tts)
-    cards = "\n".join([local_card, saas_card, g_card, tts_card, i_card])
+    vis = load_vision()
+    v_sec, v_card = vision_section(vis)
+    cards = "\n".join([local_card, saas_card, g_card, tts_card, i_card, v_card])
     ld = jsonld(runs["local"]["rows"] if runs.get("local") else [],
                 runs["saas"]["rows"] if runs.get("saas") else [],
                 guards, tts, imgs)
@@ -1007,6 +1047,7 @@ Dieselben Zahlen zum Weiterrechnen als <a href="{DATASET_URL}">Datensatz auf Hug
 {g_sec}
 {tts_sec}
 {i_sec}
+{v_sec}
 <footer><span class="wm">SOUTH<span class="dot">.</span>BYTE</span> — Michael van den Berg ·
 Teil der <a href="https://github.com/MvdB?tab=repositories&amp;q=southbyte">southbyte</a>-Familie ·
 <a href="https://southbyte.de">southbyte.de</a> ·
@@ -1087,6 +1128,12 @@ def pruefe_metadaten(*zeilengruppen) -> int:
         if luecken:
             fehlend.append((f'{g["label"]} (Guard, Zuordnung: {eintrag or "fehlt in GUARD_NAME"})', ", ".join(luecken)))
         gesehen.add(g["label"])
+    # Vision-Zeilen laufen ueber VISION_NAME (feeds.py) auf ihren models.yaml-Eintrag.
+    for v in load_vision():
+        luecken = [f for f in ("release_date", "license") if not model_meta(v["eintrag"]).get(f)]
+        if luecken:
+            fehlend.append((f'{v["name"]} (Vision, Zuordnung: {v["eintrag"] or "fehlt in VISION_NAME"})', ", ".join(luecken)))
+        gesehen.add(v["name"])
     bekannt = BILD_OHNE_HINWEIS | BILD_NICHT_KOMMERZIELL.keys() | BILD_MIT_BEDINGUNGEN.keys()
     for d in load_image():
         lic = str(model_meta(d.get("model")).get("license", "") or "")

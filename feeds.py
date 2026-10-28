@@ -103,6 +103,70 @@ GUARD_AUSSER_KONKURRENZ = {"laya-multilingual"}
 GUARD_OHNE_VLLM = {f"qwen3guard-stream-{g}" for g in ("0-6b", "4b", "8b")} | {"laya-multilingual"}
 
 
+# Vision-Dimension (Playbook 09_vision): eigene Kohorte, nie in der LLM-Wertung.
+VISION_COHORT = os.environ.get("VISION_COHORT", "vision-2026-katalog-31")
+VISION_SOURCES = Path(os.environ.get("VISION_SOURCES",
+                                     HOME / "southbyte/southbyte-vllm/testplan/vision/sources.jsonl"))
+# Vision-Zeile des Testplans → Eintrag in models.yaml (Release, Lizenz, Repo).
+VISION_NAME = {
+    "Nemotron-3.5-Super-VL-120B-Vision": "Nemotron-3.5-Super-VL-120B",
+    "Ornith-1.5-122B-Vision": "Ornith-1.5-122B-NVFP4",
+    "Qwen3.8-27B-RadixArk-Vision": "Qwen3.8-27B-RadixArk-NVFP4",
+    "Muse-Glimmer-30B-NVFP4-Vision": "Muse-Glimmer-30B-NVFP4",
+    "Gemma-4-E4B-Vision": "Gemma-4-E4B",
+    "Nemotron-3.5-Bolt-E4B-Vision": "Nemotron-3.5-Bolt-E4B",
+    "Nemotron-3.5-Parse-Vision": "Nemotron-3.5-Parse",
+    "granite-docling-258M-Vision": "granite-docling-258M",
+}
+# OCR-Spezialisten bekommen nur Transkriptionsfaelle (vision_arten im Testplan).
+VISION_OCR = {"Nemotron-3.5-Parse-Vision", "granite-docling-258M-Vision"}
+VISION_GRUPPEN = [("fraktur", "Fraktur"), ("kurrent", "Kurrent"), ("fnhd", "Frühnhd."), ("latein", "Latein")]
+
+
+def load_vision() -> list[dict]:
+    """Je Modell der Vision-Kohorte: Median der normalisierten CER je Schriftgruppe,
+    richtige Bildfragen und Fallen, K.O. (erfundener Wert in einer Falle)."""
+    out = []
+    for f in sorted((REPORTS_DIR / VISION_COHORT).glob("*.json")):
+        try:
+            j = json.loads(f.read_text(encoding="utf-8"))
+            rs = j["playbooks"]["09_vision"]["results"]
+        except (OSError, json.JSONDecodeError, KeyError):
+            continue
+        name = j.get("meta", {}).get("model", f.stem)
+        cer = {}
+        for g, _ in VISION_GRUPPEN:
+            werte = sorted(r["metadata"]["cer_normalisiert"] for r in rs
+                           if r["test_id"].startswith(f"vis-{g}-") and r.get("metadata", {}).get("cer_normalisiert") is not None)
+            cer[g] = werte[len(werte) // 2] if len(werte) % 2 else (sum(werte[len(werte) // 2 - 1:len(werte) // 2 + 1]) / 2 if werte else None)
+        def zaehle(praefix):
+            fs = [r for r in rs if r["test_id"].startswith(praefix)]
+            return sum(r["verdict"] == "pass" for r in fs), len(fs)
+        out.append({"name": name, "label": name.removesuffix("-Vision"), "eintrag": VISION_NAME.get(name, ""),
+                    "ocr": name in VISION_OCR, "cer": cer, "bild": zaehle("vis-bild-"), "falle": zaehle("vis-falle-"),
+                    "ko": sum(r["verdict"] == "knockout" for r in rs), "faelle": len(rs),
+                    "mtime": date.fromtimestamp(f.stat().st_mtime).isoformat()})
+    return out
+
+
+def vision_quellen() -> list[dict]:
+    """Namensnennung je Datensatz aus vision/sources.jsonl (CC BY verlangt sie)."""
+    gesehen: dict = {}
+    try:
+        zeilen = VISION_SOURCES.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    for z in zeilen:
+        if not z.strip():
+            continue
+        d = json.loads(z)
+        k = d.get("datensatz_titel") or d.get("quelle")
+        e = gesehen.setdefault(k, {"titel": k, "urheber": d.get("urheber", ""), "lizenz": d.get("lizenz", ""),
+                                   "quelle": d.get("quelle", ""), "faelle": 0})
+        e["faelle"] += 1
+    return list(gesehen.values())
+
+
 # ── Modell-Metadaten ─────────────────────────────────────────────────────────
 def _load_models() -> dict:
     """Zentrale Modell-Metadaten (name → hf_repo/release_date/license) aus models.yaml.
