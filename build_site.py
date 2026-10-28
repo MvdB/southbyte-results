@@ -25,7 +25,7 @@ from datetime import date
 from pathlib import Path
 
 from feeds import (
-    GUARD_AUSSER_KONKURRENZ, GUARD_NAME, MODELS_YAML, VISION_GRUPPEN, load_vision, vision_quellen, PLAYBOOK_LABELS, REPORTS_DIR, feed_stand,
+    GUARD_AUSSER_KONKURRENZ, GUARD_NAME, MODELS_YAML, VISION_GRUPPEN, load_vision, slugify, vision_quellen, PLAYBOOK_LABELS, REPORTS_DIR, feed_stand,
     image_dirs, image_seitenhinweise, load_guards, load_image,
     load_llm_runs, load_roster, load_tts, model_license, model_meta, model_repo,
     running_profile, scan_local_reports,
@@ -227,7 +227,8 @@ def vision_section(vis: list[dict]) -> tuple[str, str]:
         return "—" if not n else f'<span data-sort="{richtig / n:.3f}">{richtig}/{n}</span>'
     zeilen = []
     for v in sorted(vis, key=lambda v: (v["ocr"], v["cer"].get("fnhd") if v["cer"].get("fnhd") is not None else 9)):
-        zeilen.append([esc(v["label"]), "OCR" if v["ocr"] else "VL", rel_cell(v["eintrag"])]
+        detail = f'{LLM_URL}v/{slugify(v["name"])}.html'
+        zeilen.append([f'<a href="{esc(detail)}">{esc(v["label"])}</a>', "OCR" if v["ocr"] else "VL", rel_cell(v["eintrag"])]
                       + [num(v["cer"].get(g)) for g, _ in VISION_GRUPPEN]
                       + [anteil(v["bild"]), anteil(v["falle"]), str(v["ko"]),
                          esc(model_meta(v["eintrag"]).get("license", "—") or "—")])
@@ -240,7 +241,8 @@ def vision_section(vis: list[dict]) -> tuple[str, str]:
            '<p class="note">Echte Scans und Grafiken aus frei lizenzierten Archiven: Transkription '
            'in vier Schriftlagen, Fragen zu Tabellen, Diagrammen und Karten, Fallen (gefragt wird nach '
            'etwas, das nicht im Bild steht). Kein Judge. CER = Median der normalisierten '
-           'Zeichenfehlerrate je Schriftlage, kleiner ist besser. OCR-Spezialisten bekommen nur die '
+           'Zeichenfehlerrate je Schriftlage, kleiner ist besser. Modellname anklicken → Fall für Fall mit '
+           'Quelle, Wahrheit, Antwort und markierten Abweichungen. OCR-Spezialisten bekommen nur die '
            'Transkription. K.O. = in einer Falle einen Wert erfunden. Eigene Dimension, nicht Teil der '
            'LLM-Wertung.</p>\n'
            f'<div style="overflow-x:auto">{table(kopf, zeilen)}</div>\n'
