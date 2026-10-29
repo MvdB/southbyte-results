@@ -112,14 +112,16 @@ VISION_NAME = {
     "Nemotron-3.5-Super-VL-120B-Vision": "Nemotron-3.5-Super-VL-120B",
     "Ornith-1.5-122B-Vision": "Ornith-1.5-122B-NVFP4",
     "Qwen3.8-27B-RadixArk-Vision": "Qwen3.8-27B-RadixArk-NVFP4",
+    "Qwen3.8-27B-Uncensored-Vision": "Qwen3.8-27B-Uncensored-NVFP4",
     "Muse-Glimmer-30B-NVFP4-Vision": "Muse-Glimmer-30B-NVFP4",
     "Gemma-4-E4B-Vision": "Gemma-4-E4B",
     "Nemotron-3.5-Bolt-E4B-Vision": "Nemotron-3.5-Bolt-E4B",
     "Nemotron-3.5-Parse-Vision": "Nemotron-3.5-Parse",
     "granite-docling-258M-Vision": "granite-docling-258M",
+    "Unlimited-OCR-Vision": "Unlimited-OCR",
 }
 # OCR-Spezialisten bekommen nur Transkriptionsfaelle (vision_arten im Testplan).
-VISION_OCR = {"Nemotron-3.5-Parse-Vision", "granite-docling-258M-Vision"}
+VISION_OCR = {"Nemotron-3.5-Parse-Vision", "granite-docling-258M-Vision", "Unlimited-OCR-Vision"}
 VISION_GRUPPEN = [("fraktur", "Fraktur"), ("kurrent", "Kurrent"), ("fnhd", "Frühnhd."), ("latein", "Latein")]
 
 
@@ -293,6 +295,10 @@ def load_image() -> list[dict]:
     """Neuester Lauf je Modell."""
     runs: dict[str, dict] = {}
     for s in sorted(IMAGE_RESULTS.glob("*_*/summary.json")):
+        # Gemessen, aber (noch) nicht zu veroeffentlichen: Marker beim Lauf, wie in
+        # southbyte-tts (.nicht-veroeffentlichen, erste Zeile = Grund). Seit 29.10.2026.
+        if (s.parent / ".nicht-veroeffentlichen").exists():
+            continue
         try:
             d = json.loads(s.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):

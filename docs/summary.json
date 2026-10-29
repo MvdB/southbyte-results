@@ -1,11 +1,11 @@
 {
   "run": "2026-lokal-judge-claude-sonnet-5",
-  "date": "2026-10-25",
+  "date": "2026-10-29",
   "counts": {
     "llm": 71,
     "guard": 15,
     "image": 12,
-    "tts": 22
+    "tts": 26
   },
   "url": "https://mvdb.github.io/southbyte-results/",
   "dataset": "https://huggingface.co/datasets/SouthByte/dgx-spark-eval"

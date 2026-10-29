@@ -328,6 +328,15 @@ def tts_section(tts: list[dict]) -> tuple[str, str]:
            f'(Whisper-large-v3 &amp; Voxtral-mini) · Stimme → HF-Engine. Anhörbare Beispiele: '
            f'<a href="{TTS_URL}">{TTS_URL}</a></p>\n'
            + f'<div style="overflow-x:auto">{table(["Stimme", "Release", "WER (Whisper)", "WER (Voxtral)", "Lizenz"], rows)}</div>')
+    # Nicht-kommerzielle Engines sichtbar machen (Gegenstueck zu BILD_NICHT_KOMMERZIELL).
+    # Gesagt wird nur, was die Lizenz sicher regelt: das Modell selbst.
+    for lic_key, bez in TTS_NICHT_KOMMERZIELL.items():
+        betroffen = sorted({repo for t in tts
+                            if str(model_meta(repo := (t.get("hf") or "").replace("https://huggingface.co/", ""))
+                                   .get("license", "")) == lic_key})
+        if betroffen:
+            sec += (f'\n<p class="note"><strong>Nicht-kommerzielle Lizenz:</strong> {esc(" · ".join(betroffen))} '
+                    f'({esc(bez)}) — das Modell darf nur nicht-kommerziell genutzt werden.</p>')
     best = tts[0]  # nach WER (Voxtral) aufsteigend sortiert
     c = card("TTS", f'{len(tts)}', f'Stimmen · beste {best["voice"]}', "#tts")
     return sec, c
@@ -1058,6 +1067,9 @@ Teil der <a href="https://github.com/MvdB?tab=repositories&amp;q=southbyte">sout
 """
 
 
+# Nicht-kommerzielle Lizenzen von TTS-Engines: Kennung in models.yaml → Bezeichnung im Hinweis.
+TTS_NICHT_KOMMERZIELL = {"cc-by-nc-4.0": "CC BY-NC 4.0"}
+
 # Lizenzklassen der Bildmodelle (Gegenstueck zu eval/make_docs.py in southbyte-image).
 # Jede Lizenz eines gezeigten Bildmodells muss in genau einer davon stehen, sonst
 # meldet pruefe_metadaten eine Luecke — eine neue Lizenz faellt sonst stumm durch.
@@ -1136,6 +1148,15 @@ def pruefe_metadaten(*zeilengruppen) -> int:
         if luecken:
             fehlend.append((f'{v["name"]} (Vision, Zuordnung: {v["eintrag"] or "fehlt in VISION_NAME"})', ", ".join(luecken)))
         gesehen.add(v["name"])
+    # TTS-Stimmen laufen ueber ihr Engine-Repo auf models.yaml. Fehlt die Lizenz dort oder wird sie
+    # nicht gelesen, zeigt die Spalte stumm '—' (29.10.2026: ein Zeilenendkommentar hinter
+    # 'license:' liess den Wert fallen).
+    for t in load_tts():
+        repo = (t.get("hf") or "").replace("https://huggingface.co/", "")
+        luecken = [f for f in ("release_date", "license") if not model_meta(repo).get(f)]
+        if luecken and repo not in gesehen:
+            fehlend.append((f'{repo or t["voice"]} (TTS)', ", ".join(luecken)))
+        gesehen.add(repo)
     bekannt = BILD_OHNE_HINWEIS | BILD_NICHT_KOMMERZIELL.keys() | BILD_MIT_BEDINGUNGEN.keys()
     for d in load_image():
         lic = str(model_meta(d.get("model")).get("license", "") or "")
