@@ -298,7 +298,7 @@ def image_section(imgs: list[dict]) -> tuple[str, str]:
     abw = image_seitenhinweise()
     abweichend = [n for n in sorted({d.get("model") for d in imgs}) if n in abw]
     if abweichend:
-        hinweis += (f'<p class="note"><strong>Abweichungen vom Kohortenaufbau:</strong> '
+        hinweis += (f'<p class="note"><strong>Hinweise zu einzelnen Modellen:</strong> '
                     + " · ".join(f"{esc(n)}: {esc(abw[n])}" for n in abweichend) + '</p>\n')
     sec = ('<h2 id="image">Text-to-Image</h2>\n'
            + f'<p class="note">Spalte klicken zum Sortieren · Modell → Model-Card · '
