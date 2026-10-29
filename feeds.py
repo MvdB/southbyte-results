@@ -295,6 +295,10 @@ def load_image() -> list[dict]:
     """Neuester Lauf je Modell."""
     runs: dict[str, dict] = {}
     for s in sorted(IMAGE_RESULTS.glob("*_*/summary.json")):
+        # Gemessen, aber (noch) nicht zu veroeffentlichen: Marker beim Lauf, wie in
+        # southbyte-tts (.nicht-veroeffentlichen, erste Zeile = Grund). Seit 29.10.2026.
+        if (s.parent / ".nicht-veroeffentlichen").exists():
+            continue
         try:
             d = json.loads(s.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
