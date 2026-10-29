@@ -20,11 +20,14 @@ on top of it and cannot drift apart:
 |---|---|
 | `build_site.py` | `docs/index.html` (GitHub Pages, `main` → `/docs`). No GPU, stdlib only. |
 | `dataset.py` | `dist/dataset/` — Parquet + `runs.jsonl` + dataset card for the HF Hub |
+| `vision_datensatz.py` | `dist/vision/` — the vision test set (images, tasks, ground truth, per-image attribution) for the HF Hub |
 
 ```bash
 python build_site.py                     # the website
 python dataset.py                        # the dataset (needs pyarrow)
 python hf_upload.py --tag dataset-v0.1.0 # publish — only ever on a tag
+python vision_datensatz.py               # the vision test set (reads the catalog in southbyte-vllm)
+python hf_upload.py --satz vision --tag vision-v0.1.0
 ```
 
 `privacy.py` is the single home of the publication filter: the `04_security`
@@ -130,8 +133,12 @@ is the only address in the sitemap and in `<link rel="canonical">`.
   an oversight — being citable in leaderboards, paper benchmarks and research
   pipelines is the point of publishing, and an NC clause would prevent exactly
   that. The website above is unaffected and stays NC.
-- **Code** (`build_site.py`, `feeds.py`, `dataset.py`, `hf_ids.py`,
-  `privacy.py`, `hf_upload.py`): MIT — see [LICENSE](LICENSE).
+- **The vision test set** (`SouthByte/dgx-spark-eval-vision`): no single licence.
+  Every image keeps the licence of its source (CC BY 4.0 from several creators,
+  Destatis with source attribution), stated per row and in its `LICENSE.md`; the
+  own parts (tasks, selection, crops, manifest) are CC BY 4.0.
+- **Code** (`build_site.py`, `feeds.py`, `dataset.py`, `vision_datensatz.py`,
+  `hf_ids.py`, `privacy.py`, `hf_upload.py`): MIT — see [LICENSE](LICENSE).
 - **Model outputs & names** remain under their providers' terms — see [NOTICE.md](NOTICE.md).
 
 ---
